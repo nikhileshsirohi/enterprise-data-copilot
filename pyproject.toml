@@ -1,0 +1,18 @@
+[project]
+name = "enterprise-data-copilot"
+version = "0.1.0"
+description = "Production-grade AI chatbot for PostgreSQL business data."
+requires-python = ">=3.12,<3.14"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+DJANGO_SETTINGS_MODULE = "backend.django_app.config.settings"
+addopts = "-q"
