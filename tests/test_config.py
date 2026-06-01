@@ -13,3 +13,4 @@ def test_settings_load_from_environment() -> None:
     assert settings.api_rate_limit_window_seconds == 60
     assert settings.sql_execution_timeout_seconds == 10
     assert settings.sql_result_limit == 100
+    assert settings.sql_generation_metadata_limit == 8

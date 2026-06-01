@@ -22,3 +22,15 @@ class SQLExecutionResponse(BaseModel):
     rows: list[dict]
     row_count: int
     truncated: bool
+
+
+class SQLGenerationRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=1000)
+
+
+class SQLGenerationResponse(BaseModel):
+    question: str
+    sql: str | None
+    is_valid: bool
+    validation_reason: str | None
+    metadata: list[dict]
