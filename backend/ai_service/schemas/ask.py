@@ -4,6 +4,9 @@ from pydantic import BaseModel, Field
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=1000)
     limit: int | None = Field(default=None, ge=1, le=500)
+    user_id: int | None = Field(default=None, ge=1)
+    session_id: str | None = Field(default=None, min_length=1, max_length=100)
+    persist: bool = True
 
 
 class AskResponse(BaseModel):
@@ -19,3 +22,7 @@ class AskResponse(BaseModel):
     metadata: list[dict]
     execution_error: str | None = None
     retry_count: int = 0
+    persisted: bool = False
+    session_id: str | None = None
+    user_message_id: int | None = None
+    assistant_message_id: int | None = None
