@@ -1,20 +1,15 @@
 import logging
 import re
-from typing import Protocol
 
 from backend.ai_service.schemas.metadata import MetadataSearchResult
 from backend.ai_service.schemas.sql import SQLGenerationResponse
-from backend.ai_service.services.gemini_client import GeminiClient
+from backend.ai_service.services.llm_provider import TextGenerationClient, get_llm_client_and_model
 from backend.ai_service.services.metadata_retriever import MetadataRetriever
-from backend.ai_service.services.ollama_client import OllamaClient
+from backend.ai_service.services.schema_context import DATABASE_SCHEMA_CONTEXT
 from backend.ai_service.services.sql_validator import SQLValidator
 from backend.shared.config import get_settings
 
 logger = logging.getLogger(__name__)
-
-
-class TextGenerationClient(Protocol):
-    def generate(self, model: str, prompt: str) -> str: ...
 
 
 class SQLGenerator:
@@ -78,23 +73,7 @@ class SQLGenerator:
         )
 
     def _get_llm_client_and_model(self) -> tuple[TextGenerationClient, str]:
-        settings = get_settings()
-        if self.llm_client:
-            return self.llm_client, settings.ollama_sql_model
-
-        provider = settings.llm_provider.lower().strip()
-        if provider == "gemini":
-            return (
-                GeminiClient(
-                    api_key=settings.gemini_api_key or "",
-                    base_url=settings.gemini_base_url,
-                ),
-                settings.gemini_model,
-            )
-        if provider == "ollama":
-            return OllamaClient(settings.ollama_base_url), settings.ollama_sql_model
-
-        raise ValueError("LLM_PROVIDER must be either 'ollama' or 'gemini'.")
+        return get_llm_client_and_model(task="sql", client_override=self.llm_client)
 
     def _build_prompt(self, question: str, metadata: list[MetadataSearchResult]) -> str:
         metadata_lines = "\n".join(
@@ -112,9 +91,14 @@ Rules:
 - Use only SELECT queries.
 - Do not use INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, COPY, or comments.
 - Prefer explicit joins.
-- Use the schema metadata below as the source of truth.
+- Use the database schema and schema metadata below as the source of truth.
+- Use only tables and columns listed in the database schema.
+- Use only the required join keys listed in the database schema.
 - If a question says PO1001, match purchase_orders.po_number = 'PO1001'.
 - If a question says MAT100, also consider material codes are stored like MAT0100.
+
+Database schema:
+{DATABASE_SCHEMA_CONTEXT}
 
 Schema metadata:
 {metadata_lines}
