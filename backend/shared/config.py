@@ -29,6 +29,8 @@ class Settings(BaseSettings):
         default=604800,
         alias="JWT_REFRESH_TOKEN_TTL_SECONDS",
     )
+    sql_execution_timeout_seconds: int = Field(default=10, alias="SQL_EXECUTION_TIMEOUT_SECONDS")
+    sql_result_limit: int = Field(default=100, alias="SQL_RESULT_LIMIT")
 
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
 
