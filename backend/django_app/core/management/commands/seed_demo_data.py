@@ -113,9 +113,11 @@ class Command(BaseCommand):
                 "is_superuser": True,
             },
         )
-        if not user.has_usable_password():
-            user.set_password("DemoAdmin123!")
-            user.save(update_fields=["password"])
+        user.email = "demo_admin@example.com"
+        user.is_staff = True
+        user.is_superuser = True
+        user.set_password("DemoAdmin123!")
+        user.save(update_fields=["email", "is_staff", "is_superuser", "password"])
         return user
 
     def _create_suppliers(self) -> list[Supplier]:

@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "backend.django_app.core",
     "backend.django_app.health",
+    "backend.django_app.authentication",
 ]
 
 MIDDLEWARE = [
@@ -48,6 +49,12 @@ DATABASES = {
 }
 
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
