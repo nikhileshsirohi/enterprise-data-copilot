@@ -128,6 +128,7 @@ Correction context:
             if correction_context
             else ""
         )
+        question_hints = self._build_question_hints(question)
         return f"""
 You generate PostgreSQL SELECT queries for an enterprise business database.
 
@@ -148,6 +149,9 @@ Database schema:
 Schema metadata:
 {metadata_lines}
 
+Question-specific deterministic hints:
+{question_hints}
+
 {correction_section}
 Question:
 {question}
@@ -160,3 +164,59 @@ SQL:
         if fenced_match:
             return fenced_match.group(1).strip()
         return text.strip()
+
+    def _build_question_hints(self, question: str) -> str:
+        hints = []
+        upper_question = question.upper()
+
+        customer_codes = sorted(set(re.findall(r"\bCUST\d+\b", upper_question)))
+        if customer_codes:
+            hints.append(
+                "- Customer code filter: join customers c ON sales_orders.customer_id = c.id "
+                f"and filter c.code IN ({', '.join(repr(code) for code in customer_codes)})."
+            )
+            hints.append(
+                "- For customer material/order questions, use sales_orders so, "
+                "sales_order_items soi, materials m, and customers c."
+            )
+            hints.append(
+                "- For customer quantity or committed/customer committed wording, use "
+                "sales_order_items.order_qty AS quantity."
+            )
+            hints.append(
+                "- Do not use sales_orders.code; that column does not exist. "
+                "Do not use purchase_order_items.commit_qty for customer orders."
+            )
+
+        supplier_codes = sorted(set(re.findall(r"\bSUP\d+\b", upper_question)))
+        if supplier_codes:
+            hints.append(
+                "- Supplier code filter: join suppliers s ON purchase_orders.supplier_id = s.id "
+                f"and filter s.code IN ({', '.join(repr(code) for code in supplier_codes)})."
+            )
+
+        purchase_orders = sorted(set(re.findall(r"\bPO\d+\b", upper_question)))
+        if purchase_orders:
+            hints.append(
+                "- Purchase order filter: use purchase_orders.po_number "
+                f"IN ({', '.join(repr(po) for po in purchase_orders)})."
+            )
+
+        sales_orders = sorted(set(re.findall(r"\bSO\d+\b", upper_question)))
+        if sales_orders:
+            hints.append(
+                "- Sales order filter: use sales_orders.so_number "
+                f"IN ({', '.join(repr(so) for so in sales_orders)})."
+            )
+
+        materials = sorted(set(re.findall(r"\bMAT\d+\b", upper_question)))
+        if materials:
+            hints.append(
+                "- Material code filter: join materials m and filter m.material_code "
+                f"IN ({', '.join(repr(material) for material in materials)})."
+            )
+
+        if not hints:
+            return "- No deterministic entity hints detected."
+
+        return "\n".join(hints)

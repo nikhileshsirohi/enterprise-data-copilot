@@ -91,3 +91,19 @@ def test_sql_generator_feedback_prompt_contains_database_error() -> None:
     assert result.is_valid is True
     assert result.sql is not None
     assert "purchase_order_id" in result.sql
+
+
+def test_sql_generator_prompt_contains_customer_order_hints() -> None:
+    generator = SQLGenerator(
+        metadata_retriever=FakeMetadataRetriever(),
+        llm_client=FakeOllamaClient(),
+    )
+    prompt = generator._build_prompt(
+        question="Which material CUST00003 order and how much qty he committed",
+        metadata=FakeMetadataRetriever().search("customer material order quantity"),
+    )
+
+    assert "filter c.code IN ('CUST00003')" in prompt
+    assert "sales_order_items.order_qty AS quantity" in prompt
+    assert "Do not use sales_orders.code" in prompt
+    assert "Do not use purchase_order_items.commit_qty for customer orders" in prompt

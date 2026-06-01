@@ -44,4 +44,17 @@ Required join keys:
 
 Never use non-existent columns such as po_id, so_id, supplier_code_id, customer_code_id,
 material_code_id, or material.
+
+Business interpretation rules:
+- Customer codes look like CUST00003 and are stored in customers.code.
+- Supplier codes look like SUP0001 and are stored in suppliers.code.
+- Purchase order numbers look like PO1001 and are stored in purchase_orders.po_number.
+- Sales order numbers look like SO1001 and are stored in sales_orders.so_number.
+- Material codes look like MAT0100 and are stored in materials.material_code.
+- For questions about what a customer ordered, use sales_orders, sales_order_items, customers,
+  and materials.
+- For customer order quantity, committed quantity, booked quantity, or ordered quantity, use
+  sales_order_items.order_qty because customers do not have purchase_order_items.commit_qty.
+- Use purchase_order_items.commit_qty only for supplier or purchase order commitment questions.
+- Never reference purchase_order_items.commit_qty unless purchase_order_items is explicitly joined.
 """.strip()
