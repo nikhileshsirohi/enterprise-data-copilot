@@ -10,6 +10,7 @@ DEBUG = settings.app_debug
 ALLOWED_HOSTS = settings.allowed_hosts
 
 INSTALLED_APPS = [
+    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -34,6 +35,21 @@ MIDDLEWARE = [
 ROOT_URLCONF = "backend.django_app.config.urls"
 ASGI_APPLICATION = "backend.django_app.config.asgi.application"
 WSGI_APPLICATION = "backend.django_app.config.wsgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    }
+]
 
 DATABASES = {
     "default": {
