@@ -18,3 +18,4 @@ class AskResponse(BaseModel):
     truncated: bool
     metadata: list[dict]
     execution_error: str | None = None
+    retry_count: int = 0

@@ -63,3 +63,31 @@ def test_sql_generator_prompt_contains_join_rules() -> None:
 
     assert "purchase_order_items.purchase_order_id = purchase_orders.id" in prompt
     assert "Never use non-existent columns such as po_id" in prompt
+
+
+def test_sql_generator_feedback_prompt_contains_database_error() -> None:
+    class FeedbackFakeLLMClient:
+        def generate(self, model: str, prompt: str) -> str:
+            assert "Correction context" in prompt
+            assert "column poi.po_id does not exist" in prompt
+            return """
+            SELECT po.po_number
+            FROM purchase_orders po
+            JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+            """
+
+    result = SQLGenerator(
+        metadata_retriever=FakeMetadataRetriever(),
+        llm_client=FeedbackFakeLLMClient(),
+    ).generate_with_feedback(
+        question="committed quantity of PO1001",
+        failed_sql=(
+            "SELECT * FROM purchase_orders po "
+            "JOIN purchase_order_items poi ON poi.po_id = po.id"
+        ),
+        execution_error="column poi.po_id does not exist",
+    )
+
+    assert result.is_valid is True
+    assert result.sql is not None
+    assert "purchase_order_id" in result.sql

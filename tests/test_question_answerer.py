@@ -65,11 +65,75 @@ class FakeWrongColumnSQLGenerator:
             metadata=[],
         )
 
+    def generate_with_feedback(
+        self,
+        question: str,
+        failed_sql: str,
+        execution_error: str,
+    ) -> SQLGenerationResponse:
+        assert "po_id" in failed_sql
+        assert "does not exist" in execution_error
+        return SQLGenerationResponse(
+            question=question,
+            sql=(
+                "SELECT po.po_number, SUM(poi.commit_qty) AS committed_quantity "
+                "FROM purchase_orders po "
+                "JOIN purchase_order_items poi ON poi.purchase_order_id = po.id "
+                "WHERE po.po_number = 'PO1001' "
+                "GROUP BY po.po_number"
+            ),
+            is_valid=True,
+            validation_reason=None,
+            metadata=[],
+        )
+
+
+class FakeAlwaysWrongColumnSQLGenerator:
+    def generate(self, question: str) -> SQLGenerationResponse:
+        return SQLGenerationResponse(
+            question=question,
+            sql=(
+                "SELECT * FROM purchase_orders po "
+                "JOIN purchase_order_items poi ON poi.po_id = po.id"
+            ),
+            is_valid=True,
+            validation_reason=None,
+            metadata=[],
+        )
+
+    def generate_with_feedback(
+        self,
+        question: str,
+        failed_sql: str,
+        execution_error: str,
+    ) -> SQLGenerationResponse:
+        return self.generate(question)
+
 
 class FakeFailingSQLExecutor:
     def execute(self, sql: str, limit: int | None = None) -> SQLExecutionResponse:
         raise SQLExecutionError(
             "Database rejected the generated SQL: column poi.po_id does not exist"
+        )
+
+
+class FakeFailOnceSQLExecutor:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def execute(self, sql: str, limit: int | None = None) -> SQLExecutionResponse:
+        self.call_count += 1
+        if self.call_count == 1:
+            raise SQLExecutionError(
+                "Database rejected the generated SQL: column poi.po_id does not exist"
+            )
+        assert "purchase_order_id" in sql
+        return SQLExecutionResponse(
+            sql=sql,
+            columns=["po_number", "committed_quantity"],
+            rows=[{"po_number": "PO1001", "committed_quantity": "4983.000"}],
+            row_count=1,
+            truncated=False,
         )
 
 
@@ -99,14 +163,31 @@ def test_question_answerer_stops_before_execution_when_sql_is_invalid() -> None:
     assert "could not generate a safe read-only SQL query" in response.answer
 
 
-def test_question_answerer_handles_database_rejected_generated_sql() -> None:
+def test_question_answerer_retries_after_database_rejected_generated_sql() -> None:
+    sql_executor = FakeFailOnceSQLExecutor()
+
     response = QuestionAnswerer(
         sql_generator=FakeWrongColumnSQLGenerator(),
+        sql_executor=sql_executor,
+        llm_client=FakeLLMClient(),
+    ).ask("committed quantity of PO1001", limit=5)
+
+    assert response.is_sql_valid is True
+    assert response.row_count == 1
+    assert response.retry_count == 1
+    assert response.execution_error is None
+    assert sql_executor.call_count == 2
+
+
+def test_question_answerer_returns_error_after_retry_limit() -> None:
+    response = QuestionAnswerer(
+        sql_generator=FakeAlwaysWrongColumnSQLGenerator(),
         sql_executor=FakeFailingSQLExecutor(),
         llm_client=FakeLLMClient(),
     ).ask("committed quantity of PO1001", limit=5)
 
     assert response.is_sql_valid is True
     assert response.row_count == 0
+    assert response.retry_count == 1
     assert response.execution_error is not None
     assert "database rejected" in response.answer.lower()

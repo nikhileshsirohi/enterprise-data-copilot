@@ -14,5 +14,6 @@ def test_settings_load_from_environment() -> None:
     assert settings.sql_execution_timeout_seconds == 10
     assert settings.sql_result_limit == 100
     assert settings.sql_generation_metadata_limit == 8
+    assert settings.sql_generation_retry_count == 1
     assert settings.llm_provider in {"ollama", "gemini"}
     assert settings.gemini_model == "gemini-2.5-flash"

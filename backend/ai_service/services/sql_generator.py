@@ -25,8 +25,36 @@ class SQLGenerator:
         self.validator = validator or SQLValidator()
 
     def generate(self, question: str) -> SQLGenerationResponse:
+        return self._generate(question=question, correction_context=None)
+
+    def generate_with_feedback(
+        self,
+        question: str,
+        failed_sql: str,
+        execution_error: str,
+    ) -> SQLGenerationResponse:
+        correction_context = (
+            "The previous SQL was rejected by PostgreSQL. "
+            "Generate a corrected PostgreSQL SELECT query.\n\n"
+            f"Previous SQL:\n{failed_sql}\n\n"
+            f"PostgreSQL error:\n{execution_error}\n\n"
+            "Fix table names, column names, aliases, and join keys using only the database schema. "
+            "Return only corrected SQL."
+        )
+        return self._generate(question=question, correction_context=correction_context)
+
+    def _generate(
+        self,
+        question: str,
+        correction_context: str | None,
+    ) -> SQLGenerationResponse:
         settings = get_settings()
-        logger.info("sql_generation.start question=%r provider=%s", question, settings.llm_provider)
+        logger.info(
+            "sql_generation.start question=%r provider=%s correction=%s",
+            question,
+            settings.llm_provider,
+            bool(correction_context),
+        )
         metadata = self.metadata_retriever.search(
             query=question,
             limit=settings.sql_generation_metadata_limit,
@@ -44,7 +72,11 @@ class SQLGenerator:
                 for item in metadata
             ],
         )
-        prompt = self._build_prompt(question=question, metadata=metadata)
+        prompt = self._build_prompt(
+            question=question,
+            metadata=metadata,
+            correction_context=correction_context,
+        )
         llm_client, model = self._get_llm_client_and_model()
         logger.info(
             "sql_generation.llm_request provider=%s model=%s prompt_chars=%s",
@@ -75,13 +107,26 @@ class SQLGenerator:
     def _get_llm_client_and_model(self) -> tuple[TextGenerationClient, str]:
         return get_llm_client_and_model(task="sql", client_override=self.llm_client)
 
-    def _build_prompt(self, question: str, metadata: list[MetadataSearchResult]) -> str:
+    def _build_prompt(
+        self,
+        question: str,
+        metadata: list[MetadataSearchResult],
+        correction_context: str | None = None,
+    ) -> str:
         metadata_lines = "\n".join(
             (
                 f"- table={item.table}, column={item.column}, "
                 f"name={item.business_name}, description={item.description}"
             )
             for item in metadata
+        )
+        correction_section = (
+            f"""
+Correction context:
+{correction_context}
+"""
+            if correction_context
+            else ""
         )
         return f"""
 You generate PostgreSQL SELECT queries for an enterprise business database.
@@ -103,6 +148,7 @@ Database schema:
 Schema metadata:
 {metadata_lines}
 
+{correction_section}
 Question:
 {question}
 

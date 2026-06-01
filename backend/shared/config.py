@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     sql_execution_timeout_seconds: int = Field(default=10, alias="SQL_EXECUTION_TIMEOUT_SECONDS")
     sql_result_limit: int = Field(default=100, alias="SQL_RESULT_LIMIT")
     sql_generation_metadata_limit: int = Field(default=8, alias="SQL_GENERATION_METADATA_LIMIT")
+    sql_generation_retry_count: int = Field(default=1, alias="SQL_GENERATION_RETRY_COUNT")
 
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
 
