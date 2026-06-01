@@ -18,7 +18,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "backend.django_app.core",
     "backend.django_app.health",
-    "backend.django_app.authentication",
+    "backend.django_app.authentication.apps.AuthenticationConfig",
 ]
 
 MIDDLEWARE = [
@@ -54,6 +54,9 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "backend.django_app.authentication.throttling.RedisUserRateThrottle",
     ],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",

@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
+    api_rate_limit_requests: int = Field(default=120, alias="API_RATE_LIMIT_REQUESTS")
+    api_rate_limit_window_seconds: int = Field(default=60, alias="API_RATE_LIMIT_WINDOW_SECONDS")
+    jwt_refresh_token_ttl_seconds: int = Field(
+        default=604800,
+        alias="JWT_REFRESH_TOKEN_TTL_SECONDS",
+    )
 
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
 
