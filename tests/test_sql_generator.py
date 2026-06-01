@@ -42,7 +42,7 @@ class FakeOllamaClient:
 def test_sql_generator_returns_valid_sql() -> None:
     result = SQLGenerator(
         metadata_retriever=FakeMetadataRetriever(),
-        ollama_client=FakeOllamaClient(),
+        llm_client=FakeOllamaClient(),
     ).generate("committed quantity of PO1001")
 
     assert result.is_valid is True

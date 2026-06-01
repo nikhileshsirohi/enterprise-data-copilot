@@ -34,5 +34,5 @@ def execute_sql(request: SQLExecutionRequest) -> SQLExecutionResponse:
 def generate_sql(request: SQLGenerationRequest) -> SQLGenerationResponse:
     try:
         return SQLGenerator(metadata_retriever=get_metadata_retriever()).generate(request.question)
-    except ConnectionError as exc:
+    except (ConnectionError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

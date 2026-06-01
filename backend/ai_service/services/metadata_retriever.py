@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -6,6 +7,8 @@ from elasticsearch import Elasticsearch
 from backend.ai_service.schemas.metadata import MetadataSearchResult
 from backend.django_app.core.metadata import SCHEMA_METADATA_INDEX
 from backend.shared.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataRetriever:
@@ -17,24 +20,47 @@ class MetadataRetriever:
         if not self.client.ping():
             raise ConnectionError("Elasticsearch is not reachable")
 
+        elasticsearch_query = {
+            "multi_match": {
+                "query": query,
+                "fields": [
+                    "business_name^3",
+                    "description^2",
+                    "examples^2",
+                    "table",
+                    "column",
+                ],
+                "type": "best_fields",
+            }
+        }
+        logger.info(
+            "elasticsearch.metadata_search.request index=%s query=%r limit=%s body=%s",
+            self.index_name,
+            query,
+            limit,
+            elasticsearch_query,
+        )
         response = self.client.search(
             index=self.index_name,
             size=limit,
-            query={
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "business_name^3",
-                        "description^2",
-                        "examples^2",
-                        "table",
-                        "column",
-                    ],
-                    "type": "best_fields",
-                }
-            },
+            query=elasticsearch_query,
         )
-        return [self._to_result(hit) for hit in response.body["hits"]["hits"]]
+        results = [self._to_result(hit) for hit in response.body["hits"]["hits"]]
+        logger.info(
+            "elasticsearch.metadata_search.response total=%s returned=%s results=%s",
+            response.body["hits"]["total"],
+            len(results),
+            [
+                {
+                    "table": result.table,
+                    "column": result.column,
+                    "business_name": result.business_name,
+                    "score": result.score,
+                }
+                for result in results
+            ],
+        )
+        return results
 
     def _to_result(self, hit: dict[str, Any]) -> MetadataSearchResult:
         source = hit["_source"]

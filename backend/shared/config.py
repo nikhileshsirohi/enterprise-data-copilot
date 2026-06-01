@@ -42,6 +42,13 @@ class Settings(BaseSettings):
         alias="OLLAMA_SQL_MODEL",
     )
     ollama_embedding_model: str = Field(default="nomic-embed-text", alias="OLLAMA_EMBEDDING_MODEL")
+    llm_provider: str = Field(default="ollama", alias="LLM_PROVIDER")
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_base_url: str = Field(
+        default="https://generativelanguage.googleapis.com/v1beta",
+        alias="GEMINI_BASE_URL",
+    )
 
     @property
     def postgres_dsn(self) -> str:

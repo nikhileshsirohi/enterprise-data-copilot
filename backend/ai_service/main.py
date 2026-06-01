@@ -2,9 +2,11 @@ from fastapi import FastAPI
 
 from backend.ai_service.api.v1.router import api_router
 from backend.shared.config import get_settings
+from backend.shared.logging import configure_logging
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     settings = get_settings()
     app = FastAPI(
         title="Enterprise Data Copilot AI Service",
