@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_semantic_cache_prefix: str = Field(
+        default="semantic_cache:ask",
+        alias="REDIS_SEMANTIC_CACHE_PREFIX",
+    )
     api_rate_limit_requests: int = Field(default=120, alias="API_RATE_LIMIT_REQUESTS")
     api_rate_limit_window_seconds: int = Field(default=60, alias="API_RATE_LIMIT_WINDOW_SECONDS")
     jwt_refresh_token_ttl_seconds: int = Field(
@@ -33,6 +37,9 @@ class Settings(BaseSettings):
     sql_result_limit: int = Field(default=100, alias="SQL_RESULT_LIMIT")
     sql_generation_metadata_limit: int = Field(default=8, alias="SQL_GENERATION_METADATA_LIMIT")
     sql_generation_retry_count: int = Field(default=1, alias="SQL_GENERATION_RETRY_COUNT")
+    semantic_cache_enabled: bool = Field(default=True, alias="SEMANTIC_CACHE_ENABLED")
+    semantic_cache_threshold: float = Field(default=0.95, alias="SEMANTIC_CACHE_THRESHOLD")
+    semantic_cache_ttl_seconds: int = Field(default=86400, alias="SEMANTIC_CACHE_TTL_SECONDS")
 
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
 

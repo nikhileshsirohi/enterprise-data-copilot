@@ -40,3 +40,28 @@ class OllamaClient:
             raise OllamaError("Ollama returned an empty response.")
 
         return generated_text.strip()
+
+    def embed(self, model: str, text: str) -> list[float]:
+        request = Request(
+            url=f"{self.base_url}/api/embeddings",
+            data=json.dumps(
+                {
+                    "model": model,
+                    "prompt": text,
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except URLError as exc:
+            raise OllamaError(f"Ollama embedding endpoint is not reachable: {exc}") from exc
+
+        embedding = payload.get("embedding")
+        if not embedding:
+            raise OllamaError("Ollama returned an empty embedding response.")
+
+        return [float(value) for value in embedding]

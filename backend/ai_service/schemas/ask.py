@@ -7,6 +7,7 @@ class AskRequest(BaseModel):
     user_id: int | None = Field(default=None, ge=1)
     session_id: str | None = Field(default=None, min_length=1, max_length=100)
     persist: bool = True
+    use_cache: bool = True
 
 
 class AskResponse(BaseModel):
@@ -26,3 +27,6 @@ class AskResponse(BaseModel):
     session_id: str | None = None
     user_message_id: int | None = None
     assistant_message_id: int | None = None
+    cache_hit: bool = False
+    cache_similarity: float | None = None
+    cache_key: str | None = None
