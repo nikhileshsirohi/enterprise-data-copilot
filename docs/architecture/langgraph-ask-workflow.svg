@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1120" viewBox="0 0 1440 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Enterprise Data Copilot Ask Workflow</title>
+  <desc id="desc">Workflow diagram for the FastAPI ask endpoint, semantic cache, chat context, LangGraph SQL workflow, persistence, and audit logging.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2f3a4a"/>
+    </marker>
+    <style>
+      .bg { fill: #f7f9fc; }
+      .title { font: 700 34px Arial, Helvetica, sans-serif; fill: #172033; }
+      .subtitle { font: 400 17px Arial, Helvetica, sans-serif; fill: #526070; }
+      .lane-title { font: 700 18px Arial, Helvetica, sans-serif; fill: #273349; }
+      .box { fill: #ffffff; stroke: #c8d2e0; stroke-width: 2; rx: 8; }
+      .box-blue { fill: #eaf3ff; stroke: #7badf0; stroke-width: 2; rx: 8; }
+      .box-green { fill: #eaf8f0; stroke: #69b889; stroke-width: 2; rx: 8; }
+      .box-amber { fill: #fff4db; stroke: #d8a540; stroke-width: 2; rx: 8; }
+      .box-red { fill: #fdecec; stroke: #dc7777; stroke-width: 2; rx: 8; }
+      .box-purple { fill: #f1edff; stroke: #9c83da; stroke-width: 2; rx: 8; }
+      .text { font: 700 17px Arial, Helvetica, sans-serif; fill: #1e293b; }
+      .small { font: 400 14px Arial, Helvetica, sans-serif; fill: #475569; }
+      .tiny { font: 400 12px Arial, Helvetica, sans-serif; fill: #64748b; }
+      .arrow { stroke: #2f3a4a; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .dashed { stroke-dasharray: 8 7; }
+      .lane { fill: #ffffff; stroke: #dbe3ef; stroke-width: 2; rx: 12; }
+      .pill { fill: #172033; rx: 16; }
+      .pill-text { font: 700 13px Arial, Helvetica, sans-serif; fill: #ffffff; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1440" height="1120"/>
+
+  <text class="title" x="64" y="70">Enterprise Data Copilot Ask Workflow</text>
+  <text class="subtitle" x="64" y="102">FastAPI /ask/ request flow with Redis semantic cache, chat context, LangGraph SQL workflow, PostgreSQL, and audit logging.</text>
+
+  <rect class="lane" x="50" y="140" width="1340" height="160"/>
+  <text class="lane-title" x="76" y="174">API Boundary</text>
+
+  <rect class="box-blue" x="96" y="205" width="210" height="62"/>
+  <text class="text" x="126" y="231">POST /api/v1/ask/</text>
+  <text class="small" x="126" y="252">AskRequest</text>
+
+  <rect class="box" x="386" y="205" width="220" height="62"/>
+  <text class="text" x="418" y="231">Load Settings</text>
+  <text class="small" x="418" y="252">limits, cache, models</text>
+
+  <rect class="box-purple" x="686" y="205" width="250" height="62"/>
+  <text class="text" x="714" y="231">ChatHistoryReader</text>
+  <text class="small" x="714" y="252">recent session context</text>
+
+  <rect class="box-amber" x="1020" y="205" width="260" height="62"/>
+  <text class="text" x="1049" y="231">Semantic Cache Gate</text>
+  <text class="small" x="1049" y="252">disabled when context exists</text>
+
+  <path class="arrow" d="M306 236 H386"/>
+  <path class="arrow" d="M606 236 H686"/>
+  <path class="arrow" d="M936 236 H1020"/>
+
+  <rect class="lane" x="50" y="330" width="1340" height="190"/>
+  <text class="lane-title" x="76" y="364">Redis Semantic Cache</text>
+
+  <rect class="box-amber" x="108" y="400" width="230" height="72"/>
+  <text class="text" x="138" y="425">Normalize Question</text>
+  <text class="small" x="138" y="447">qty → quantity</text>
+  <text class="small" x="138" y="466">PO1001 → po 1001</text>
+
+  <rect class="box-amber" x="414" y="400" width="230" height="72"/>
+  <text class="text" x="448" y="425">Embed Question</text>
+  <text class="small" x="448" y="447">Ollama</text>
+  <text class="small" x="448" y="466">nomic-embed-text</text>
+
+  <rect class="box-amber" x="720" y="400" width="250" height="72"/>
+  <text class="text" x="752" y="425">Search Redis Cache</text>
+  <text class="small" x="752" y="447">cosine similarity</text>
+  <text class="small" x="752" y="466">strict or business match</text>
+
+  <rect class="box-green" x="1046" y="400" width="250" height="72"/>
+  <text class="text" x="1086" y="425">Cache Hit</text>
+  <text class="small" x="1086" y="447">return cached answer</text>
+  <text class="small" x="1086" y="466">skip LLM + SQL</text>
+
+  <path class="arrow" d="M1150 267 V318 C1150 350 223 360 223 400"/>
+  <path class="arrow" d="M338 436 H414"/>
+  <path class="arrow" d="M644 436 H720"/>
+  <path class="arrow" d="M970 436 H1046"/>
+
+  <rect class="lane" x="50" y="550" width="1340" height="350"/>
+  <text class="lane-title" x="76" y="584">LangGraphAskWorkflow</text>
+
+  <rect class="pill" x="96" y="612" width="130" height="32"/>
+  <text class="pill-text" x="128" y="633">Graph Start</text>
+
+  <rect class="box-blue" x="96" y="675" width="230" height="76"/>
+  <text class="text" x="132" y="701">generate_sql</text>
+  <text class="small" x="132" y="723">SQLGenerator</text>
+  <text class="small" x="132" y="742">metadata + schema context</text>
+
+  <rect class="box-purple" x="388" y="675" width="230" height="76"/>
+  <text class="text" x="429" y="701">Elasticsearch</text>
+  <text class="small" x="429" y="723">business metadata</text>
+  <text class="small" x="429" y="742">tables, columns, meanings</text>
+
+  <rect class="box" x="680" y="675" width="230" height="76"/>
+  <text class="text" x="721" y="701">SQL Validator</text>
+  <text class="small" x="721" y="723">SELECT only</text>
+  <text class="small" x="721" y="742">block writes and DDL</text>
+
+  <rect class="box-green" x="972" y="675" width="230" height="76"/>
+  <text class="text" x="1013" y="701">execute_sql</text>
+  <text class="small" x="1013" y="723">SQLExecutor</text>
+  <text class="small" x="1013" y="742">PostgreSQL read query</text>
+
+  <rect class="box-green" x="972" y="795" width="230" height="76"/>
+  <text class="text" x="1008" y="821">summarize_answer</text>
+  <text class="small" x="1008" y="843">reasoning LLM</text>
+  <text class="small" x="1008" y="862">uses SQL result JSON</text>
+
+  <rect class="box-red" x="680" y="795" width="230" height="76"/>
+  <text class="text" x="713" y="821">Invalid SQL</text>
+  <text class="small" x="713" y="843">safe failure response</text>
+  <text class="small" x="713" y="862">no execution</text>
+
+  <rect class="box-red" x="388" y="795" width="230" height="76"/>
+  <text class="text" x="421" y="821">DB Error</text>
+  <text class="small" x="421" y="843">retry once with feedback</text>
+  <text class="small" x="421" y="862">or return error answer</text>
+
+  <path class="arrow" d="M1171 472 V535 C1171 596 161 590 161 612"/>
+  <path class="arrow" d="M161 644 V675"/>
+  <path class="arrow dashed" d="M326 713 H388"/>
+  <path class="arrow dashed" d="M618 713 H680"/>
+  <path class="arrow" d="M910 713 H972"/>
+  <path class="arrow" d="M1087 751 V795"/>
+  <path class="arrow" d="M795 751 V795"/>
+  <path class="arrow" d="M972 833 H910"/>
+  <path class="arrow" d="M680 833 H618"/>
+  <path class="arrow dashed" d="M503 795 C503 640 211 640 211 675"/>
+
+  <text class="tiny" x="346" y="696">metadata retrieval</text>
+  <text class="tiny" x="635" y="696">validate generated SQL</text>
+  <text class="tiny" x="924" y="696">valid SELECT</text>
+  <text class="tiny" x="1100" y="783">success</text>
+  <text class="tiny" x="798" y="783">invalid</text>
+  <text class="tiny" x="486" y="778">execution failure</text>
+
+  <rect class="lane" x="50" y="930" width="1340" height="140"/>
+  <text class="lane-title" x="76" y="964">Post Processing</text>
+
+  <rect class="box-purple" x="110" y="995" width="250" height="52"/>
+  <text class="text" x="137" y="1018">ChatHistoryRecorder</text>
+  <text class="small" x="137" y="1039">persist user + assistant messages</text>
+
+  <rect class="box-amber" x="438" y="995" width="250" height="52"/>
+  <text class="text" x="471" y="1018">Store Semantic Cache</text>
+  <text class="small" x="471" y="1039">only successful non-context answers</text>
+
+  <rect class="box" x="766" y="995" width="250" height="52"/>
+  <text class="text" x="813" y="1018">AskAuditLogger</text>
+  <text class="small" x="813" y="1039">write audit_logs row</text>
+
+  <rect class="box-green" x="1094" y="995" width="210" height="52"/>
+  <text class="text" x="1140" y="1018">AskResponse</text>
+  <text class="small" x="1140" y="1039">return to client</text>
+
+  <path class="arrow" d="M1087 871 V912 C1087 950 235 950 235 995"/>
+  <path class="arrow" d="M360 1021 H438"/>
+  <path class="arrow" d="M688 1021 H766"/>
+  <path class="arrow" d="M1016 1021 H1094"/>
+
+  <text class="tiny" x="64" y="1095">Saved as docs/architecture/langgraph-ask-workflow.svg</text>
+</svg>
