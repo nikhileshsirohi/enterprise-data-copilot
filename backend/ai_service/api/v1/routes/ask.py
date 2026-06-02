@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.ai_service.schemas.ask import AskRequest, AskResponse
+from backend.ai_service.services.audit_logger import AskAuditLogger, AskAuditRecord
 from backend.ai_service.services.chat_history import (
     ChatHistoryReader,
     ChatHistoryRecorder,
@@ -18,6 +19,7 @@ router = APIRouter()
 
 @router.post("/", response_model=AskResponse)
 def ask_question(request: AskRequest) -> AskResponse:
+    audit_logger = AskAuditLogger()
     try:
         settings = get_settings()
         chat_context = ChatHistoryReader().get_recent_context(
@@ -65,10 +67,53 @@ def ask_question(request: AskRequest) -> AskResponse:
                     "assistant_message_id": persistence.assistant_message_id,
                 }
             )
+        audit_logger.record(
+            AskAuditRecord(
+                user_id=request.user_id,
+                session_id=response.session_id or request.session_id,
+                question=request.question,
+                limit=request.limit,
+                status="SUCCESS",
+                response=response,
+            )
+        )
         return response
     except ChatPersistenceError as exc:
+        audit_logger.record(
+            AskAuditRecord(
+                user_id=request.user_id,
+                session_id=request.session_id,
+                question=request.question,
+                limit=request.limit,
+                status="CLIENT_ERROR",
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SQLExecutionError as exc:
+        audit_logger.record(
+            AskAuditRecord(
+                user_id=request.user_id,
+                session_id=request.session_id,
+                question=request.question,
+                limit=request.limit,
+                status="CLIENT_ERROR",
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (ConnectionError, RuntimeError, ValueError) as exc:
+        audit_logger.record(
+            AskAuditRecord(
+                user_id=request.user_id,
+                session_id=request.session_id,
+                question=request.question,
+                limit=request.limit,
+                status="SERVICE_ERROR",
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+            )
+        )
         raise HTTPException(status_code=503, detail=str(exc)) from exc
