@@ -1,4 +1,5 @@
 from backend.ai_service.schemas.metadata import MetadataSearchResult
+from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.sql_generator import SQLGenerator
 
 
@@ -107,3 +108,25 @@ def test_sql_generator_prompt_contains_customer_order_hints() -> None:
     assert "sales_order_items.order_qty AS quantity" in prompt
     assert "Do not use sales_orders.code" in prompt
     assert "Do not use purchase_order_items.commit_qty for customer orders" in prompt
+
+
+def test_sql_generator_prompt_contains_recent_chat_context() -> None:
+    generator = SQLGenerator(
+        metadata_retriever=FakeMetadataRetriever(),
+        llm_client=FakeOllamaClient(),
+    )
+    prompt = generator._build_prompt(
+        question="what about its supplier?",
+        metadata=FakeMetadataRetriever().search("supplier"),
+        chat_context=[
+            ChatContextMessage(role="USER", content="committed quantity of PO1001"),
+            ChatContextMessage(
+                role="ASSISTANT",
+                content="PO1001 has a committed quantity of 4,983.",
+            ),
+        ],
+    )
+
+    assert "Recent conversation context:" in prompt
+    assert "- USER: committed quantity of PO1001" in prompt
+    assert "Use recent conversation context only to resolve follow-up references." in prompt

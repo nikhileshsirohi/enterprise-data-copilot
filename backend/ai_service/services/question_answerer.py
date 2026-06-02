@@ -4,6 +4,7 @@ from typing import Protocol
 
 from backend.ai_service.schemas.ask import AskResponse
 from backend.ai_service.schemas.sql import SQLExecutionResponse, SQLGenerationResponse
+from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.llm_provider import TextGenerationClient, get_llm_client_and_model
 from backend.ai_service.services.sql_executor import SQLExecutionError, SQLExecutor
 from backend.shared.config import get_settings
@@ -12,13 +13,18 @@ logger = logging.getLogger(__name__)
 
 
 class SQLGeneratorProtocol(Protocol):
-    def generate(self, question: str) -> SQLGenerationResponse: ...
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse: ...
 
     def generate_with_feedback(
         self,
         question: str,
         failed_sql: str,
         execution_error: str,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> SQLGenerationResponse: ...
 
 
@@ -37,10 +43,21 @@ class QuestionAnswerer:
         self.sql_executor = sql_executor or SQLExecutor()
         self.llm_client = llm_client
 
-    def ask(self, question: str, limit: int | None = None) -> AskResponse:
+    def ask(
+        self,
+        question: str,
+        limit: int | None = None,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> AskResponse:
         settings = get_settings()
-        logger.info("ask.start question=%r provider=%s", question, settings.llm_provider)
-        generation = self.sql_generator.generate(question)
+        context = chat_context or []
+        logger.info(
+            "ask.start question=%r provider=%s chat_context_messages=%s",
+            question,
+            settings.llm_provider,
+            len(context),
+        )
+        generation = self.sql_generator.generate(question, chat_context=context)
         retry_count = 0
         max_retries = settings.sql_generation_retry_count
 
@@ -110,6 +127,7 @@ class QuestionAnswerer:
                     question=question,
                     failed_sql=generation.sql,
                     execution_error=str(exc),
+                    chat_context=context,
                 )
         logger.info(
             "ask.sql_execution_done row_count=%s truncated=%s columns=%s",
@@ -117,7 +135,12 @@ class QuestionAnswerer:
             execution.truncated,
             execution.columns,
         )
-        answer = self._summarize(question=question, generation=generation, execution=execution)
+        answer = self._summarize(
+            question=question,
+            generation=generation,
+            execution=execution,
+            chat_context=context,
+        )
         logger.info("ask.complete answer=%r", answer)
 
         return AskResponse(
@@ -132,6 +155,8 @@ class QuestionAnswerer:
             truncated=execution.truncated,
             metadata=generation.metadata,
             retry_count=retry_count,
+            used_chat_context=bool(context),
+            chat_context_message_count=len(context),
         )
 
     def _summarize(
@@ -139,6 +164,7 @@ class QuestionAnswerer:
         question: str,
         generation: SQLGenerationResponse,
         execution: SQLExecutionResponse,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> str:
         llm_client, model = get_llm_client_and_model(
             task="reasoning",
@@ -148,6 +174,7 @@ class QuestionAnswerer:
             question=question,
             generation=generation,
             execution=execution,
+            chat_context=chat_context or [],
         )
         settings = get_settings()
         logger.info(
@@ -165,9 +192,14 @@ class QuestionAnswerer:
         question: str,
         generation: SQLGenerationResponse,
         execution: SQLExecutionResponse,
+        chat_context: list[ChatContextMessage],
     ) -> str:
         payload = {
             "question": question,
+            "chat_context": [
+                {"role": message.role, "content": message.content}
+                for message in chat_context
+            ],
             "sql": execution.sql,
             "columns": execution.columns,
             "row_count": execution.row_count,
@@ -179,6 +211,7 @@ class QuestionAnswerer:
 You are an enterprise data copilot.
 
 Use only the SQL result JSON below to answer the user's question.
+Use recent conversation context only to understand follow-up wording.
 Do not invent facts.
 If rows are empty, say that no matching data was found.
 If truncated is true, mention that the answer is based on the returned limited rows.

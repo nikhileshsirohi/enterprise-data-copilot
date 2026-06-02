@@ -1,7 +1,11 @@
 from django.contrib.auth import get_user_model
 
 from backend.ai_service.schemas.ask import AskResponse
-from backend.ai_service.services.chat_history import ChatHistoryRecorder, ChatPersistenceError
+from backend.ai_service.services.chat_history import (
+    ChatHistoryReader,
+    ChatHistoryRecorder,
+    ChatPersistenceError,
+)
 from backend.django_app.core.models import ChatMessage, ChatSession
 
 
@@ -88,6 +92,43 @@ def test_chat_history_rejects_session_user_mismatch(db) -> None:
             question="bad",
             answer=build_answer(),
             limit=3,
+        )
+    except ChatPersistenceError as exc:
+        assert "does not belong" in str(exc)
+    else:
+        raise AssertionError("Expected ChatPersistenceError")
+
+
+def test_chat_history_reader_returns_recent_context_in_chronological_order(db) -> None:
+    user = get_user_model().objects.create_user(username="context-user")
+    session = ChatSession.objects.create(session_id="chat_context", user=user)
+    ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content="first")
+    ChatMessage.objects.create(session=session, role=ChatMessage.Role.ASSISTANT, content="second")
+    ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content="third")
+
+    context = ChatHistoryReader().get_recent_context(
+        session_id=session.session_id,
+        user_id=user.id,
+        limit=2,
+    )
+
+    assert [message.content for message in context] == ["second", "third"]
+    assert [message.role for message in context] == [
+        ChatMessage.Role.ASSISTANT,
+        ChatMessage.Role.USER,
+    ]
+
+
+def test_chat_history_reader_rejects_session_user_mismatch(db) -> None:
+    user = get_user_model().objects.create_user(username="context-owner")
+    other_user = get_user_model().objects.create_user(username="context-other")
+    session = ChatSession.objects.create(session_id="chat_context_owner", user=user)
+
+    try:
+        ChatHistoryReader().get_recent_context(
+            session_id=session.session_id,
+            user_id=other_user.id,
+            limit=2,
         )
     except ChatPersistenceError as exc:
         assert "does not belong" in str(exc)

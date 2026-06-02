@@ -1,10 +1,15 @@
 from backend.ai_service.schemas.sql import SQLExecutionResponse, SQLGenerationResponse
+from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.question_answerer import QuestionAnswerer
 from backend.ai_service.services.sql_executor import SQLExecutionError
 
 
 class FakeSQLGenerator:
-    def generate(self, question: str) -> SQLGenerationResponse:
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse:
         return SQLGenerationResponse(
             question=question,
             sql="SELECT po_number, committed_quantity FROM result",
@@ -42,7 +47,11 @@ class FakeLLMClient:
 
 
 class FakeUnsafeSQLGenerator:
-    def generate(self, question: str) -> SQLGenerationResponse:
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse:
         return SQLGenerationResponse(
             question=question,
             sql="DELETE FROM purchase_orders",
@@ -53,7 +62,11 @@ class FakeUnsafeSQLGenerator:
 
 
 class FakeWrongColumnSQLGenerator:
-    def generate(self, question: str) -> SQLGenerationResponse:
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse:
         return SQLGenerationResponse(
             question=question,
             sql=(
@@ -70,6 +83,7 @@ class FakeWrongColumnSQLGenerator:
         question: str,
         failed_sql: str,
         execution_error: str,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> SQLGenerationResponse:
         assert "po_id" in failed_sql
         assert "does not exist" in execution_error
@@ -89,7 +103,11 @@ class FakeWrongColumnSQLGenerator:
 
 
 class FakeAlwaysWrongColumnSQLGenerator:
-    def generate(self, question: str) -> SQLGenerationResponse:
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse:
         return SQLGenerationResponse(
             question=question,
             sql=(
@@ -106,6 +124,7 @@ class FakeAlwaysWrongColumnSQLGenerator:
         question: str,
         failed_sql: str,
         execution_error: str,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> SQLGenerationResponse:
         return self.generate(question)
 
@@ -191,3 +210,51 @@ def test_question_answerer_returns_error_after_retry_limit() -> None:
     assert response.retry_count == 1
     assert response.execution_error is not None
     assert "database rejected" in response.answer.lower()
+
+
+def test_question_answerer_passes_chat_context_to_generator_and_answer_prompt() -> None:
+    class ContextAwareSQLGenerator:
+        def generate(
+            self,
+            question: str,
+            chat_context: list[ChatContextMessage] | None = None,
+        ) -> SQLGenerationResponse:
+            assert question == "what about its supplier?"
+            assert chat_context
+            assert chat_context[0].content == "committed quantity of PO1001"
+            return SQLGenerationResponse(
+                question=question,
+                sql="SELECT supplier_name FROM result",
+                is_valid=True,
+                validation_reason=None,
+                metadata=[],
+            )
+
+    class ContextAwareExecutor:
+        def execute(self, sql: str, limit: int | None = None) -> SQLExecutionResponse:
+            return SQLExecutionResponse(
+                sql=sql,
+                columns=["supplier_name"],
+                rows=[{"supplier_name": "Supplier 1"}],
+                row_count=1,
+                truncated=False,
+            )
+
+    class ContextAwareLLMClient:
+        def generate(self, model: str, prompt: str) -> str:
+            assert "committed quantity of PO1001" in prompt
+            assert "what about its supplier?" in prompt
+            return "The supplier is Supplier 1."
+
+    response = QuestionAnswerer(
+        sql_generator=ContextAwareSQLGenerator(),
+        sql_executor=ContextAwareExecutor(),
+        llm_client=ContextAwareLLMClient(),
+    ).ask(
+        "what about its supplier?",
+        chat_context=[ChatContextMessage(role="USER", content="committed quantity of PO1001")],
+    )
+
+    assert response.used_chat_context is True
+    assert response.chat_context_message_count == 1
+    assert response.answer == "The supplier is Supplier 1."

@@ -3,6 +3,7 @@ import re
 
 from backend.ai_service.schemas.metadata import MetadataSearchResult
 from backend.ai_service.schemas.sql import SQLGenerationResponse
+from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.llm_provider import TextGenerationClient, get_llm_client_and_model
 from backend.ai_service.services.metadata_retriever import MetadataRetriever
 from backend.ai_service.services.schema_context import DATABASE_SCHEMA_CONTEXT
@@ -24,14 +25,23 @@ class SQLGenerator:
         self.llm_client = llm_client or ollama_client
         self.validator = validator or SQLValidator()
 
-    def generate(self, question: str) -> SQLGenerationResponse:
-        return self._generate(question=question, correction_context=None)
+    def generate(
+        self,
+        question: str,
+        chat_context: list[ChatContextMessage] | None = None,
+    ) -> SQLGenerationResponse:
+        return self._generate(
+            question=question,
+            correction_context=None,
+            chat_context=chat_context or [],
+        )
 
     def generate_with_feedback(
         self,
         question: str,
         failed_sql: str,
         execution_error: str,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> SQLGenerationResponse:
         correction_context = (
             "The previous SQL was rejected by PostgreSQL. "
@@ -41,12 +51,17 @@ class SQLGenerator:
             "Fix table names, column names, aliases, and join keys using only the database schema. "
             "Return only corrected SQL."
         )
-        return self._generate(question=question, correction_context=correction_context)
+        return self._generate(
+            question=question,
+            correction_context=correction_context,
+            chat_context=chat_context or [],
+        )
 
     def _generate(
         self,
         question: str,
         correction_context: str | None,
+        chat_context: list[ChatContextMessage],
     ) -> SQLGenerationResponse:
         settings = get_settings()
         logger.info(
@@ -76,6 +91,7 @@ class SQLGenerator:
             question=question,
             metadata=metadata,
             correction_context=correction_context,
+            chat_context=chat_context,
         )
         llm_client, model = self._get_llm_client_and_model()
         logger.info(
@@ -112,6 +128,7 @@ class SQLGenerator:
         question: str,
         metadata: list[MetadataSearchResult],
         correction_context: str | None = None,
+        chat_context: list[ChatContextMessage] | None = None,
     ) -> str:
         metadata_lines = "\n".join(
             (
@@ -129,6 +146,7 @@ Correction context:
             else ""
         )
         question_hints = self._build_question_hints(question)
+        chat_context_section = self._format_chat_context(chat_context or [])
         return f"""
 You generate PostgreSQL SELECT queries for an enterprise business database.
 
@@ -142,12 +160,17 @@ Rules:
 - Use only the required join keys listed in the database schema.
 - If a question says PO1001, match purchase_orders.po_number = 'PO1001'.
 - If a question says MAT100, also consider material codes are stored like MAT0100.
+- Use recent conversation context only to resolve follow-up references.
+- Never copy SQL from chat history without validating it against the current schema.
 
 Database schema:
 {DATABASE_SCHEMA_CONTEXT}
 
 Schema metadata:
 {metadata_lines}
+
+Recent conversation context:
+{chat_context_section}
 
 Question-specific deterministic hints:
 {question_hints}
@@ -220,3 +243,13 @@ SQL:
             return "- No deterministic entity hints detected."
 
         return "\n".join(hints)
+
+    def _format_chat_context(self, chat_context: list[ChatContextMessage]) -> str:
+        if not chat_context:
+            return "- No prior conversation context."
+
+        lines = []
+        for message in chat_context:
+            content = re.sub(r"\s+", " ", message.content).strip()
+            lines.append(f"- {message.role}: {content[:500]}")
+        return "\n".join(lines)

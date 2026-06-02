@@ -30,3 +30,5 @@ class AskResponse(BaseModel):
     cache_hit: bool = False
     cache_similarity: float | None = None
     cache_key: str | None = None
+    used_chat_context: bool = False
+    chat_context_message_count: int = 0

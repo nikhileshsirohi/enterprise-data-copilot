@@ -16,8 +16,10 @@ def test_settings_load_from_environment() -> None:
     assert settings.sql_result_limit == 100
     assert settings.sql_generation_metadata_limit == 8
     assert settings.sql_generation_retry_count == 1
+    assert settings.chat_history_context_limit == 6
     assert settings.semantic_cache_enabled is True
     assert settings.semantic_cache_threshold == 0.95
+    assert settings.semantic_cache_business_threshold == 0.90
     assert settings.semantic_cache_ttl_seconds == 86400
     assert settings.llm_provider in {"ollama", "gemini"}
     assert settings.gemini_model == "gemini-2.5-flash"

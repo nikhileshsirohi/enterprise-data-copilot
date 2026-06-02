@@ -20,6 +20,55 @@ class ChatPersistenceResult:
     assistant_message_id: int | None = None
 
 
+@dataclass(frozen=True)
+class ChatContextMessage:
+    role: str
+    content: str
+
+
+class ChatHistoryReader:
+    def get_recent_context(
+        self,
+        *,
+        session_id: str | None,
+        user_id: int | None,
+        limit: int,
+    ) -> list[ChatContextMessage]:
+        ensure_django_setup()
+
+        from backend.django_app.core.models import ChatMessage, ChatSession
+
+        if not session_id or limit <= 0:
+            logger.info("chat_history.context_skip reason=no_session_or_limit")
+            return []
+
+        session = ChatSession.objects.filter(session_id=session_id, is_active=True).first()
+        if not session:
+            logger.info("chat_history.context_not_found session_id=%s", session_id)
+            return []
+
+        if user_id and session.user_id != user_id:
+            raise ChatPersistenceError("session_id does not belong to the supplied user_id.")
+
+        messages = list(
+            session.messages.filter(
+                role__in=[ChatMessage.Role.USER, ChatMessage.Role.ASSISTANT],
+            )
+            .order_by("-created_at", "-id")[:limit]
+            .values_list("role", "content")
+        )
+        context = [
+            ChatContextMessage(role=role, content=content)
+            for role, content in reversed(messages)
+        ]
+        logger.info(
+            "chat_history.context_loaded session_id=%s message_count=%s",
+            session_id,
+            len(context),
+        )
+        return context
+
+
 class ChatHistoryRecorder:
     def record_exchange(
         self,

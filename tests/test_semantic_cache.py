@@ -19,8 +19,10 @@ class FakeRedis:
 class FakeEmbeddingClient:
     def __init__(self, embedding):
         self.embedding = embedding
+        self.requests = []
 
     def embed(self, model: str, text: str):
+        self.requests.append(text)
         return self.embedding
 
 
@@ -54,6 +56,39 @@ def test_semantic_cache_stores_and_returns_hit() -> None:
     assert hit.similarity == 1.0
     assert hit.response.cache_hit is True
     assert hit.response.answer == "PO1001 has committed quantity 4983."
+
+
+def test_semantic_cache_normalizes_business_aliases_before_embedding() -> None:
+    fake_redis = FakeRedis()
+    embedding_client = FakeEmbeddingClient([1.0, 0.0, 0.0])
+    cache = SemanticCache(redis_client=fake_redis, embedding_client=embedding_client)
+
+    cache.set("committed quantity of PO1001", build_response())
+    cache.get("what is committed qty for PO1001")
+
+    assert embedding_client.requests == [
+        "committed quantity of po 1001",
+        "what is committed quantity for po 1001",
+    ]
+
+
+def test_semantic_cache_uses_business_threshold_for_same_intent_and_entity() -> None:
+    fake_redis = FakeRedis()
+    writer = SemanticCache(
+        redis_client=fake_redis,
+        embedding_client=FakeEmbeddingClient([1.0, 0.0, 0.0]),
+    )
+    writer.set("committed quantity of PO1001", build_response())
+
+    reader = SemanticCache(
+        redis_client=fake_redis,
+        embedding_client=FakeEmbeddingClient([0.928, 0.37258019271049175, 0.0]),
+    )
+    hit = reader.get("what is committed qty for PO1001")
+
+    assert hit is not None
+    assert hit.response.cache_hit is True
+    assert hit.similarity < 0.95
 
 
 def test_semantic_cache_miss_when_similarity_is_low() -> None:
