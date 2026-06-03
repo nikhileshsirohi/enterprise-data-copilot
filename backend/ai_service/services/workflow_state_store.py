@@ -24,10 +24,18 @@ class RedisWorkflowStateStore:
     def __init__(self, redis_client: Redis | None = None) -> None:
         self.redis_client = redis_client or get_redis_client()
 
-    def start_run(self, *, question: str, limit: int | None, chat_context_count: int) -> str:
+    def start_run(
+        self,
+        *,
+        question: str,
+        limit: int | None,
+        chat_context_count: int,
+        user_id: int | None = None,
+    ) -> str:
         run_id = uuid4().hex
         payload = {
             "run_id": run_id,
+            "user_id": user_id,
             "status": "RUNNING",
             "question": question,
             "limit": limit,

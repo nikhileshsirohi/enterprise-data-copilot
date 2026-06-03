@@ -29,7 +29,7 @@ def test_health_endpoint_stays_public() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_protected_endpoint_accepts_valid_django_access_token() -> None:
-    user = get_user_model().objects.create_user(username="fastapi-user")
+    user = get_user_model().objects.create_user(username="fastapi-user", is_staff=True)
     token = build_access_token(user.id)
     client = TestClient(app)
 
@@ -41,6 +41,22 @@ def test_protected_endpoint_accepts_valid_django_access_token() -> None:
 
     assert response.status_code == 200, response.json()
     assert response.json()["is_valid"] is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_staff_endpoint_rejects_non_staff_user() -> None:
+    user = get_user_model().objects.create_user(username="non-staff-user", is_staff=False)
+    token = build_access_token(user.id)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/sql/validate",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"sql": "SELECT 1"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Staff access is required."
 
 
 @pytest.mark.django_db(transaction=True)

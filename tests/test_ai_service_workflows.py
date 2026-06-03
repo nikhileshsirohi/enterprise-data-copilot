@@ -24,6 +24,7 @@ def test_workflow_run_endpoint_returns_redis_trace() -> None:
     app.dependency_overrides[get_workflow_state_store] = lambda: FakeWorkflowStateStore(
         {
             "run_id": "workflow_123",
+            "user_id": 1,
             "status": "SUCCESS",
             "question": "committed quantity of PO1001",
             "checkpoints": [
@@ -45,6 +46,7 @@ def test_workflow_run_endpoint_returns_redis_trace() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["run_id"] == "workflow_123"
+    assert body["user_id"] == 1
     assert body["status"] == "SUCCESS"
     assert body["checkpoints"][0]["node"] == "generate_sql"
     assert body["result"]["row_count"] == 1
@@ -65,3 +67,79 @@ def test_workflow_run_endpoint_returns_404_when_missing() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Workflow run was not found or expired."
+
+
+def test_workflow_run_endpoint_blocks_other_users() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=2,
+        username="other-user",
+        is_staff=False,
+    )
+    app.dependency_overrides[get_workflow_state_store] = lambda: FakeWorkflowStateStore(
+        {
+            "run_id": "workflow_123",
+            "user_id": 1,
+            "status": "SUCCESS",
+            "question": "committed quantity of PO1001",
+            "checkpoints": [],
+            "result": {},
+        }
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/v1/workflows/workflow_123")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You do not have access to this workflow run."
+
+
+def test_workflow_run_endpoint_allows_staff_to_view_other_users() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=99,
+        username="staff-user",
+        is_staff=True,
+    )
+    app.dependency_overrides[get_workflow_state_store] = lambda: FakeWorkflowStateStore(
+        {
+            "run_id": "workflow_123",
+            "user_id": 1,
+            "status": "SUCCESS",
+            "question": "committed quantity of PO1001",
+            "checkpoints": [],
+            "result": {},
+        }
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/v1/workflows/workflow_123")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == 1
+
+
+def test_workflow_run_endpoint_blocks_ownerless_legacy_runs_for_non_staff() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=2,
+        username="regular-user",
+        is_staff=False,
+    )
+    app.dependency_overrides[get_workflow_state_store] = lambda: FakeWorkflowStateStore(
+        {
+            "run_id": "legacy_workflow",
+            "status": "SUCCESS",
+            "question": "committed quantity of PO1001",
+            "checkpoints": [],
+            "result": {},
+        }
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/v1/workflows/legacy_workflow")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 403

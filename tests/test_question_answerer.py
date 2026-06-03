@@ -51,7 +51,15 @@ class FakeWorkflowStateStore:
         self.checkpoints = []
         self.completions = []
 
-    def start_run(self, *, question: str, limit: int | None, chat_context_count: int) -> str:
+    def start_run(
+        self,
+        *,
+        question: str,
+        limit: int | None,
+        chat_context_count: int,
+        user_id: int | None = None,
+    ) -> str:
+        self.user_id = user_id
         return "workflow_test"
 
     def append_checkpoint(self, run_id, checkpoint) -> None:
@@ -178,7 +186,7 @@ def test_question_answerer_runs_generate_execute_summarize_flow() -> None:
         sql_executor=FakeSQLExecutor(),
         llm_client=FakeLLMClient(),
         state_store=state_store,
-    ).ask("committed quantity of PO1001", limit=5)
+    ).ask("committed quantity of PO1001", limit=5, user_id=2)
 
     assert response.answer == "PO1001 has a committed quantity of 4,983."
     assert response.sql == "SELECT po_number, committed_quantity FROM result"
@@ -186,6 +194,7 @@ def test_question_answerer_runs_generate_execute_summarize_flow() -> None:
     assert response.rows[0]["committed_quantity"] == "4983.000"
     assert response.is_sql_valid is True
     assert response.workflow_run_id == "workflow_test"
+    assert state_store.user_id == 2
     assert state_store.completions[-1][1] == "SUCCESS"
 
 

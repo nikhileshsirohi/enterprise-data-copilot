@@ -39,6 +39,7 @@ class SQLExecutorProtocol(Protocol):
 
 class AskWorkflowState(TypedDict, total=False):
     question: str
+    user_id: int | None
     limit: int | None
     chat_context: list[ChatContextMessage]
     max_retries: int
@@ -79,15 +80,18 @@ class LangGraphAskWorkflow:
         question: str,
         limit: int | None,
         chat_context: list[ChatContextMessage],
+        user_id: int | None = None,
     ) -> AskResponse:
         settings = get_settings()
         workflow_run_id = self.state_store.start_run(
             question=question,
             limit=limit,
             chat_context_count=len(chat_context),
+            user_id=user_id,
         )
         initial_state: AskWorkflowState = {
             "question": question,
+            "user_id": user_id,
             "limit": limit,
             "chat_context": chat_context,
             "max_retries": settings.sql_generation_retry_count,

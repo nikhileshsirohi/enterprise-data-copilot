@@ -50,6 +50,7 @@ def ask_question(
                 question=request.question,
                 limit=request.limit,
                 chat_context=chat_context,
+                user_id=effective_user_id,
             )
             cache_key = (
                 semantic_cache.set(request.question, response) if allow_semantic_cache else None

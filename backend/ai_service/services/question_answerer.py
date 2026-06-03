@@ -35,6 +35,7 @@ class QuestionAnswerer:
         question: str,
         limit: int | None = None,
         chat_context: list[ChatContextMessage] | None = None,
+        user_id: int | None = None,
     ) -> AskResponse:
         settings = get_settings()
         context = chat_context or []
@@ -50,7 +51,12 @@ class QuestionAnswerer:
             answer_summarizer=self._summarize,
             state_store=self.state_store,
         )
-        return workflow.run(question=question, limit=limit, chat_context=context)
+        return workflow.run(
+            question=question,
+            limit=limit,
+            chat_context=context,
+            user_id=user_id,
+        )
 
     def _summarize(
         self,

@@ -27,6 +27,7 @@ def test_workflow_state_store_records_checkpoints_and_completion() -> None:
         question="committed quantity of PO1001",
         limit=5,
         chat_context_count=0,
+        user_id=7,
     )
     store.append_checkpoint(
         run_id,
@@ -43,6 +44,7 @@ def test_workflow_state_store_records_checkpoints_and_completion() -> None:
 
     assert redis.ttls[key] == 86400
     assert payload["run_id"] == run_id
+    assert payload["user_id"] == 7
     assert payload["status"] == "SUCCESS"
     assert payload["question"] == "committed quantity of PO1001"
     assert payload["checkpoints"][0]["node"] == "generate_sql"

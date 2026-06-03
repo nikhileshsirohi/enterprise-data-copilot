@@ -33,6 +33,17 @@ def require_authenticated_user(
     return _load_active_user(user_id)
 
 
+def require_staff_user(
+    current_user: Annotated[AuthenticatedUser, Depends(require_authenticated_user)],
+) -> AuthenticatedUser:
+    if not current_user.is_staff:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff access is required.",
+        )
+    return current_user
+
+
 def _decode_access_token(token: str) -> dict:
     settings = get_settings()
     try:

@@ -42,7 +42,7 @@ def test_sql_validation_endpoint() -> None:
     app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
         user_id=1,
         username="api-user",
-        is_staff=False,
+        is_staff=True,
     )
     client = TestClient(app)
 
