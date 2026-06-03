@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.ai_service.schemas.ask import AskRequest, AskResponse
+from backend.ai_service.security.jwt_auth import AuthenticatedUser, require_authenticated_user
 from backend.ai_service.services.audit_logger import AskAuditLogger, AskAuditRecord
 from backend.ai_service.services.chat_history import (
     ChatHistoryReader,
@@ -15,16 +16,27 @@ from backend.ai_service.services.sql_generator import SQLGenerator
 from backend.shared.config import get_settings
 
 router = APIRouter()
+CurrentUserDependency = Depends(require_authenticated_user)
 
 
 @router.post("/", response_model=AskResponse)
-def ask_question(request: AskRequest) -> AskResponse:
+def ask_question(
+    request: AskRequest,
+    current_user: AuthenticatedUser = CurrentUserDependency,
+) -> AskResponse:
     audit_logger = AskAuditLogger()
+    effective_user_id = request.user_id or current_user.user_id
+    if effective_user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Request user_id does not match the authenticated user.",
+        )
+
     try:
         settings = get_settings()
         chat_context = ChatHistoryReader().get_recent_context(
             session_id=request.session_id,
-            user_id=request.user_id,
+            user_id=effective_user_id,
             limit=settings.chat_history_context_limit,
         )
         allow_semantic_cache = request.use_cache and not chat_context
@@ -53,7 +65,7 @@ def ask_question(request: AskRequest) -> AskResponse:
         )
         if request.persist:
             persistence = ChatHistoryRecorder().record_exchange(
-                user_id=request.user_id,
+                user_id=effective_user_id,
                 session_id=request.session_id,
                 question=request.question,
                 answer=response,
@@ -69,7 +81,7 @@ def ask_question(request: AskRequest) -> AskResponse:
             )
         audit_logger.record(
             AskAuditRecord(
-                user_id=request.user_id,
+                user_id=effective_user_id,
                 session_id=response.session_id or request.session_id,
                 question=request.question,
                 limit=request.limit,
@@ -81,7 +93,7 @@ def ask_question(request: AskRequest) -> AskResponse:
     except ChatPersistenceError as exc:
         audit_logger.record(
             AskAuditRecord(
-                user_id=request.user_id,
+                user_id=effective_user_id,
                 session_id=request.session_id,
                 question=request.question,
                 limit=request.limit,
@@ -94,7 +106,7 @@ def ask_question(request: AskRequest) -> AskResponse:
     except SQLExecutionError as exc:
         audit_logger.record(
             AskAuditRecord(
-                user_id=request.user_id,
+                user_id=effective_user_id,
                 session_id=request.session_id,
                 question=request.question,
                 limit=request.limit,
@@ -107,7 +119,7 @@ def ask_question(request: AskRequest) -> AskResponse:
     except (ConnectionError, RuntimeError, ValueError) as exc:
         audit_logger.record(
             AskAuditRecord(
-                user_id=request.user_id,
+                user_id=effective_user_id,
                 session_id=request.session_id,
                 question=request.question,
                 limit=request.limit,
