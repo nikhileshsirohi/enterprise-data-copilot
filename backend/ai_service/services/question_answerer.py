@@ -11,6 +11,7 @@ from backend.ai_service.services.ask_workflow import (
 from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.llm_provider import TextGenerationClient, get_llm_client_and_model
 from backend.ai_service.services.sql_executor import SQLExecutor
+from backend.ai_service.services.workflow_state_store import RedisWorkflowStateStore
 from backend.shared.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -22,10 +23,12 @@ class QuestionAnswerer:
         sql_generator: SQLGeneratorProtocol,
         sql_executor: SQLExecutorProtocol | None = None,
         llm_client: TextGenerationClient | None = None,
+        state_store: RedisWorkflowStateStore | None = None,
     ) -> None:
         self.sql_generator = sql_generator
         self.sql_executor = sql_executor or SQLExecutor()
         self.llm_client = llm_client
+        self.state_store = state_store
 
     def ask(
         self,
@@ -45,6 +48,7 @@ class QuestionAnswerer:
             sql_generator=self.sql_generator,
             sql_executor=self.sql_executor,
             answer_summarizer=self._summarize,
+            state_store=self.state_store,
         )
         return workflow.run(question=question, limit=limit, chat_context=context)
 

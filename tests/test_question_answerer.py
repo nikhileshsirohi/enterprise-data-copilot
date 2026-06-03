@@ -46,6 +46,21 @@ class FakeLLMClient:
         return "PO1001 has a committed quantity of 4,983."
 
 
+class FakeWorkflowStateStore:
+    def __init__(self) -> None:
+        self.checkpoints = []
+        self.completions = []
+
+    def start_run(self, *, question: str, limit: int | None, chat_context_count: int) -> str:
+        return "workflow_test"
+
+    def append_checkpoint(self, run_id, checkpoint) -> None:
+        self.checkpoints.append((run_id, checkpoint))
+
+    def complete_run(self, run_id: str, *, status: str, metadata: dict | None = None) -> None:
+        self.completions.append((run_id, status, metadata))
+
+
 class FakeUnsafeSQLGenerator:
     def generate(
         self,
@@ -157,10 +172,12 @@ class FakeFailOnceSQLExecutor:
 
 
 def test_question_answerer_runs_generate_execute_summarize_flow() -> None:
+    state_store = FakeWorkflowStateStore()
     response = QuestionAnswerer(
         sql_generator=FakeSQLGenerator(),
         sql_executor=FakeSQLExecutor(),
         llm_client=FakeLLMClient(),
+        state_store=state_store,
     ).ask("committed quantity of PO1001", limit=5)
 
     assert response.answer == "PO1001 has a committed quantity of 4,983."
@@ -168,6 +185,8 @@ def test_question_answerer_runs_generate_execute_summarize_flow() -> None:
     assert response.row_count == 1
     assert response.rows[0]["committed_quantity"] == "4983.000"
     assert response.is_sql_valid is True
+    assert response.workflow_run_id == "workflow_test"
+    assert state_store.completions[-1][1] == "SUCCESS"
 
 
 def test_question_answerer_stops_before_execution_when_sql_is_invalid() -> None:
@@ -175,6 +194,7 @@ def test_question_answerer_stops_before_execution_when_sql_is_invalid() -> None:
         sql_generator=FakeUnsafeSQLGenerator(),
         sql_executor=FakeSQLExecutor(),
         llm_client=FakeLLMClient(),
+        state_store=FakeWorkflowStateStore(),
     ).ask("delete purchase orders", limit=5)
 
     assert response.is_sql_valid is False
@@ -189,6 +209,7 @@ def test_question_answerer_retries_after_database_rejected_generated_sql() -> No
         sql_generator=FakeWrongColumnSQLGenerator(),
         sql_executor=sql_executor,
         llm_client=FakeLLMClient(),
+        state_store=FakeWorkflowStateStore(),
     ).ask("committed quantity of PO1001", limit=5)
 
     assert response.is_sql_valid is True
@@ -203,6 +224,7 @@ def test_question_answerer_returns_error_after_retry_limit() -> None:
         sql_generator=FakeAlwaysWrongColumnSQLGenerator(),
         sql_executor=FakeFailingSQLExecutor(),
         llm_client=FakeLLMClient(),
+        state_store=FakeWorkflowStateStore(),
     ).ask("committed quantity of PO1001", limit=5)
 
     assert response.is_sql_valid is True
@@ -250,6 +272,7 @@ def test_question_answerer_passes_chat_context_to_generator_and_answer_prompt() 
         sql_generator=ContextAwareSQLGenerator(),
         sql_executor=ContextAwareExecutor(),
         llm_client=ContextAwareLLMClient(),
+        state_store=FakeWorkflowStateStore(),
     ).ask(
         "what about its supplier?",
         chat_context=[ChatContextMessage(role="USER", content="committed quantity of PO1001")],

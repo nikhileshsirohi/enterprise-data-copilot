@@ -67,6 +67,7 @@ class AskAuditLogger:
             "chat_context_message_count": (
                 response.chat_context_message_count if response else None
             ),
+            "workflow_run_id": response.workflow_run_id if response else None,
             "persisted": response.persisted if response else None,
             "retry_count": response.retry_count if response else None,
             "execution_error": response.execution_error if response else None,

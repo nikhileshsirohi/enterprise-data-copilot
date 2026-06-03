@@ -32,3 +32,4 @@ class AskResponse(BaseModel):
     cache_key: str | None = None
     used_chat_context: bool = False
     chat_context_message_count: int = 0
+    workflow_run_id: str | None = None

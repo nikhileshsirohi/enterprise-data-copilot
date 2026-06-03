@@ -8,6 +8,10 @@ from backend.ai_service.schemas.ask import AskResponse
 from backend.ai_service.schemas.sql import SQLExecutionResponse, SQLGenerationResponse
 from backend.ai_service.services.chat_history import ChatContextMessage
 from backend.ai_service.services.sql_executor import SQLExecutionError
+from backend.ai_service.services.workflow_state_store import (
+    RedisWorkflowStateStore,
+    WorkflowCheckpoint,
+)
 from backend.shared.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,7 @@ class AskWorkflowState(TypedDict, total=False):
     failed_sql: str
     execution_error: str
     should_retry: bool
+    workflow_run_id: str
     response: AskResponse
 
 
@@ -60,10 +65,12 @@ class LangGraphAskWorkflow:
         sql_generator: SQLGeneratorProtocol,
         sql_executor: SQLExecutorProtocol,
         answer_summarizer: AnswerSummarizer,
+        state_store: RedisWorkflowStateStore | None = None,
     ) -> None:
         self.sql_generator = sql_generator
         self.sql_executor = sql_executor
         self.answer_summarizer = answer_summarizer
+        self.state_store = state_store or RedisWorkflowStateStore()
         self.graph = self._build_graph()
 
     def run(
@@ -74,6 +81,11 @@ class LangGraphAskWorkflow:
         chat_context: list[ChatContextMessage],
     ) -> AskResponse:
         settings = get_settings()
+        workflow_run_id = self.state_store.start_run(
+            question=question,
+            limit=limit,
+            chat_context_count=len(chat_context),
+        )
         initial_state: AskWorkflowState = {
             "question": question,
             "limit": limit,
@@ -81,6 +93,7 @@ class LangGraphAskWorkflow:
             "max_retries": settings.sql_generation_retry_count,
             "retry_count": 0,
             "should_retry": False,
+            "workflow_run_id": workflow_run_id,
         }
         final_state = self.graph.invoke(initial_state)
         return final_state["response"]
@@ -140,6 +153,19 @@ class LangGraphAskWorkflow:
             generation.sql,
             generation.validation_reason,
         )
+        self.state_store.append_checkpoint(
+            state["workflow_run_id"],
+            WorkflowCheckpoint(
+                node="generate_sql",
+                status="VALID" if generation.is_valid else "INVALID",
+                metadata={
+                    "retry_count": retry_count,
+                    "sql": generation.sql,
+                    "validation_reason": generation.validation_reason,
+                    "metadata_count": len(generation.metadata),
+                },
+            ),
+        )
         return {
             "generation": generation,
             "should_retry": False,
@@ -168,6 +194,18 @@ class LangGraphAskWorkflow:
                 execution.row_count,
                 execution.truncated,
             )
+            self.state_store.append_checkpoint(
+                state["workflow_run_id"],
+                WorkflowCheckpoint(
+                    node="execute_sql",
+                    status="SUCCESS",
+                    metadata={
+                        "row_count": execution.row_count,
+                        "truncated": execution.truncated,
+                        "columns": execution.columns,
+                    },
+                ),
+            )
             return {
                 "execution": execution,
                 "should_retry": False,
@@ -182,6 +220,20 @@ class LangGraphAskWorkflow:
                 max_retries,
                 should_retry,
                 exc,
+            )
+            self.state_store.append_checkpoint(
+                state["workflow_run_id"],
+                WorkflowCheckpoint(
+                    node="execute_sql",
+                    status="RETRY" if should_retry else "FAILED",
+                    metadata={
+                        "retry_count": retry_count,
+                        "max_retries": max_retries,
+                        "should_retry": should_retry,
+                        "error": str(exc),
+                        "failed_sql": generation.sql,
+                    },
+                ),
             )
             return {
                 "execution_error": str(exc),
@@ -204,6 +256,15 @@ class LangGraphAskWorkflow:
             f"Reason: {generation.validation_reason or 'unknown'}"
         )
         logger.info("ask.workflow.invalid_sql answer=%r", answer)
+        self.state_store.complete_run(
+            state["workflow_run_id"],
+            status="INVALID_SQL",
+            metadata={
+                "is_sql_valid": False,
+                "validation_reason": generation.validation_reason,
+                "retry_count": state.get("retry_count", 0),
+            },
+        )
         return {
             "response": AskResponse(
                 question=state["question"],
@@ -219,6 +280,7 @@ class LangGraphAskWorkflow:
                 retry_count=state.get("retry_count", 0),
                 used_chat_context=bool(state.get("chat_context", [])),
                 chat_context_message_count=len(state.get("chat_context", [])),
+                workflow_run_id=state["workflow_run_id"],
             )
         }
 
@@ -231,6 +293,15 @@ class LangGraphAskWorkflow:
             f"Error: {execution_error}"
         )
         logger.info("ask.workflow.execution_error answer=%r", answer)
+        self.state_store.complete_run(
+            state["workflow_run_id"],
+            status="EXECUTION_ERROR",
+            metadata={
+                "is_sql_valid": True,
+                "execution_error": execution_error,
+                "retry_count": state.get("retry_count", 0),
+            },
+        )
         return {
             "response": AskResponse(
                 question=state["question"],
@@ -247,6 +318,7 @@ class LangGraphAskWorkflow:
                 retry_count=state.get("retry_count", 0),
                 used_chat_context=bool(state.get("chat_context", [])),
                 chat_context_message_count=len(state.get("chat_context", [])),
+                workflow_run_id=state["workflow_run_id"],
             )
         }
 
@@ -260,6 +332,27 @@ class LangGraphAskWorkflow:
         logger.info("ask.workflow.complete answer=%r", answer)
         execution = state["execution"]
         generation = state["generation"]
+        self.state_store.append_checkpoint(
+            state["workflow_run_id"],
+            WorkflowCheckpoint(
+                node="summarize_answer",
+                status="SUCCESS",
+                metadata={
+                    "answer_chars": len(answer),
+                    "retry_count": state.get("retry_count", 0),
+                },
+            ),
+        )
+        self.state_store.complete_run(
+            state["workflow_run_id"],
+            status="SUCCESS",
+            metadata={
+                "is_sql_valid": True,
+                "row_count": execution.row_count,
+                "truncated": execution.truncated,
+                "retry_count": state.get("retry_count", 0),
+            },
+        )
         return {
             "response": AskResponse(
                 question=state["question"],
@@ -275,5 +368,6 @@ class LangGraphAskWorkflow:
                 retry_count=state.get("retry_count", 0),
                 used_chat_context=bool(state.get("chat_context", [])),
                 chat_context_message_count=len(state.get("chat_context", [])),
+                workflow_run_id=state["workflow_run_id"],
             )
         }

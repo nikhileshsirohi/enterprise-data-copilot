@@ -27,6 +27,10 @@ class Settings(BaseSettings):
         default="semantic_cache:ask",
         alias="REDIS_SEMANTIC_CACHE_PREFIX",
     )
+    redis_langgraph_state_prefix: str = Field(
+        default="langgraph:ask",
+        alias="REDIS_LANGGRAPH_STATE_PREFIX",
+    )
     api_rate_limit_requests: int = Field(default=120, alias="API_RATE_LIMIT_REQUESTS")
     api_rate_limit_window_seconds: int = Field(default=60, alias="API_RATE_LIMIT_WINDOW_SECONDS")
     jwt_refresh_token_ttl_seconds: int = Field(
@@ -38,6 +42,7 @@ class Settings(BaseSettings):
     sql_generation_metadata_limit: int = Field(default=8, alias="SQL_GENERATION_METADATA_LIMIT")
     sql_generation_retry_count: int = Field(default=1, alias="SQL_GENERATION_RETRY_COUNT")
     chat_history_context_limit: int = Field(default=6, alias="CHAT_HISTORY_CONTEXT_LIMIT")
+    langgraph_state_ttl_seconds: int = Field(default=86400, alias="LANGGRAPH_STATE_TTL_SECONDS")
     semantic_cache_enabled: bool = Field(default=True, alias="SEMANTIC_CACHE_ENABLED")
     semantic_cache_threshold: float = Field(default=0.95, alias="SEMANTIC_CACHE_THRESHOLD")
     semantic_cache_business_threshold: float = Field(
