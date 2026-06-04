@@ -39,6 +39,8 @@ def test_policy_answerer_returns_rag_answer_with_sources() -> None:
     assert response.answer_source == "policy"
     assert response.sql is None
     assert response.row_count == 1
+    assert response.metadata[0]["policy_rag_min_score"] == 0.75
+    assert response.metadata[0]["accepted_policy_chunks"] == 1
     assert response.policy_sources[0]["document_id"] == "travel-expense-policy"
     assert "60 USD per day" in response.answer
 
@@ -53,4 +55,29 @@ def test_policy_answerer_handles_no_results() -> None:
     assert response.answer_source == "policy"
     assert response.row_count == 0
     assert response.policy_sources == []
-    assert "could not find" in response.answer.lower()
+    assert "enough confidence" in response.answer.lower()
+
+
+def test_policy_answerer_rejects_low_score_results() -> None:
+    class LowScorePolicySearcher:
+        def search(self, query: str, limit: int = 5):
+            return [
+                PolicySearchResult(
+                    document_id="remote-work-policy",
+                    document_title="Remote Work Policy",
+                    source_path="data/company_policies/remote-work-policy.pdf",
+                    chunk_id="remote-work-policy:0",
+                    chunk_index=0,
+                    text="Remote work requires manager approval.",
+                    score=0.50,
+                )
+            ]
+
+    response = PolicyAnswerer(policy_searcher=LowScorePolicySearcher()).ask(
+        "What is the reimbursement limit for meals?"
+    )
+
+    assert response.row_count == 0
+    assert response.policy_sources == []
+    assert response.metadata[0]["retrieved_policy_chunks"] == 1
+    assert response.metadata[0]["accepted_policy_chunks"] == 0

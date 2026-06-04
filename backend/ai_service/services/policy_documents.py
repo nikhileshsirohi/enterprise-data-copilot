@@ -215,18 +215,61 @@ class PolicyVectorSearcher:
         if not self.elasticsearch_client.ping():
             raise ConnectionError("Elasticsearch is not reachable")
 
+        settings = get_settings()
+        candidate_size = max(limit * settings.policy_hybrid_candidate_multiplier, limit)
+        vector_hits = self._vector_search(query=query, candidate_size=candidate_size)
+        keyword_hits = self._keyword_search(query=query, candidate_size=candidate_size)
+        fused_hits = self._reciprocal_rank_fusion(
+            vector_hits=vector_hits,
+            keyword_hits=keyword_hits,
+        )
+        return [self._to_result(hit) for hit in fused_hits[:limit]]
+
+    def _vector_search(self, *, query: str, candidate_size: int) -> list[dict[str, Any]]:
         query_embedding = self.embedding_client.embed(model=self.embedding_model, text=query)
         response = self.elasticsearch_client.search(
             index=self.index_name,
             knn={
                 "field": "embedding",
                 "query_vector": query_embedding,
-                "k": limit,
-                "num_candidates": max(limit * 10, 50),
+                "k": candidate_size,
+                "num_candidates": max(candidate_size * 10, 50),
             },
-            size=limit,
+            size=candidate_size,
         )
-        return [self._to_result(hit) for hit in response.body["hits"]["hits"]]
+        return response.body["hits"]["hits"]
+
+    def _keyword_search(self, *, query: str, candidate_size: int) -> list[dict[str, Any]]:
+        response = self.elasticsearch_client.search(
+            index=self.index_name,
+            query={
+                "multi_match": {
+                    "query": query,
+                    "fields": ["document_title^2", "text"],
+                    "type": "best_fields",
+                }
+            },
+            size=candidate_size,
+        )
+        return response.body["hits"]["hits"]
+
+    def _reciprocal_rank_fusion(
+        self,
+        *,
+        vector_hits: list[dict[str, Any]],
+        keyword_hits: list[dict[str, Any]],
+        rank_constant: int = 60,
+    ) -> list[dict[str, Any]]:
+        fused: dict[str, dict[str, Any]] = {}
+
+        for hits in (vector_hits, keyword_hits):
+            for rank, hit in enumerate(hits, start=1):
+                chunk_id = hit["_source"]["chunk_id"]
+                if chunk_id not in fused:
+                    fused[chunk_id] = {**hit, "_score": 0.0}
+                fused[chunk_id]["_score"] += 1.0 / (rank_constant + rank)
+
+        return sorted(fused.values(), key=lambda hit: hit["_score"], reverse=True)
 
     def _to_result(self, hit: dict[str, Any]) -> PolicySearchResult:
         source = hit["_source"]

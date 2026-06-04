@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     )
     policy_chunk_size: int = Field(default=900, alias="POLICY_CHUNK_SIZE")
     policy_chunk_overlap: int = Field(default=150, alias="POLICY_CHUNK_OVERLAP")
+    policy_rag_min_score: float = Field(default=0.75, alias="POLICY_RAG_MIN_SCORE")
+    policy_hybrid_candidate_multiplier: int = Field(
+        default=4,
+        alias="POLICY_HYBRID_CANDIDATE_MULTIPLIER",
+    )
     intent_embedding_confidence_threshold: float = Field(
         default=0.78,
         alias="INTENT_EMBEDDING_CONFIDENCE_THRESHOLD",

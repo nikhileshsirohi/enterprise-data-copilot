@@ -21,12 +21,19 @@ class PolicyAnswerer:
         self.llm_client = llm_client
 
     def ask(self, question: str, limit: int | None = None) -> AskResponse:
+        settings = get_settings()
         search_limit = min(limit or 5, 10)
         results = self.policy_searcher.search(query=question, limit=search_limit)
-        if not results:
+        filtered_results = [
+            result for result in results if result.score >= settings.policy_rag_min_score
+        ]
+        if not filtered_results:
             return AskResponse(
                 question=question,
-                answer="I could not find relevant company policy information for this question.",
+                answer=(
+                    "I could not find company policy information with enough confidence "
+                    "to answer this question."
+                ),
                 answer_source="policy",
                 sql=None,
                 is_sql_valid=True,
@@ -35,11 +42,17 @@ class PolicyAnswerer:
                 rows=[],
                 row_count=0,
                 truncated=False,
-                metadata=[],
+                metadata=[
+                    {
+                        "policy_rag_min_score": settings.policy_rag_min_score,
+                        "retrieved_policy_chunks": len(results),
+                        "accepted_policy_chunks": 0,
+                    }
+                ],
                 policy_sources=[],
             )
 
-        answer = self._summarize(question=question, results=results)
+        answer = self._summarize(question=question, results=filtered_results)
         return AskResponse(
             question=question,
             answer=answer,
@@ -49,10 +62,16 @@ class PolicyAnswerer:
             validation_reason=None,
             columns=[],
             rows=[],
-            row_count=len(results),
+            row_count=len(filtered_results),
             truncated=False,
-            metadata=[],
-            policy_sources=[result.model_dump() for result in results],
+            metadata=[
+                {
+                    "policy_rag_min_score": settings.policy_rag_min_score,
+                    "retrieved_policy_chunks": len(results),
+                    "accepted_policy_chunks": len(filtered_results),
+                }
+            ],
+            policy_sources=[result.model_dump() for result in filtered_results],
         )
 
     def _summarize(self, question: str, results: list[PolicySearchResult]) -> str:

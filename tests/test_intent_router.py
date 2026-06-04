@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+
+from backend.ai_service.services import intent_router
 from backend.ai_service.services.intent_router import IntentRouter
 
 
@@ -56,7 +59,19 @@ def test_intent_router_uses_embedding_similarity_when_keywords_are_unclear() -> 
     assert "Stage 3 embedding similarity" in decision.reason
 
 
-def test_intent_router_uses_llm_fallback_when_rules_and_embeddings_are_uncertain() -> None:
+def test_intent_router_uses_llm_fallback_when_rules_and_embeddings_are_uncertain(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        intent_router,
+        "get_settings",
+        lambda: SimpleNamespace(
+            ollama_embedding_model="nomic-embed-text",
+            intent_embedding_confidence_threshold=0.78,
+            intent_llm_fallback_enabled=True,
+        ),
+    )
+
     decision = IntentRouter(
         embedding_client=FakeEmbeddingClient(
             {"Tell me about employee guidelines": [0.1, 0.2, 0.3]},

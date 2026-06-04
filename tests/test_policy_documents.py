@@ -2,6 +2,7 @@ from backend.ai_service.services.policy_documents import (
     PolicyChunker,
     PolicyDocument,
     PolicyDocumentIndexer,
+    PolicyVectorSearcher,
 )
 
 
@@ -63,3 +64,38 @@ def test_policy_indexer_creates_dense_vector_mapping() -> None:
     assert embedding_mapping["type"] == "dense_vector"
     assert embedding_mapping["dims"] == 3
     assert embedding_mapping["similarity"] == "cosine"
+
+
+def build_hit(chunk_id: str, title: str = "Travel Expense Policy"):
+    return {
+        "_score": 10.0,
+        "_source": {
+            "document_id": title.lower().replace(" ", "-"),
+            "document_title": title,
+            "source_path": f"data/company_policies/{title.lower().replace(' ', '-')}.pdf",
+            "chunk_id": chunk_id,
+            "chunk_index": 0,
+            "text": "Meal reimbursement is capped at 60 USD per day.",
+        },
+    }
+
+
+def test_policy_searcher_reciprocal_rank_fusion_merges_duplicate_chunks() -> None:
+    searcher = PolicyVectorSearcher(
+        elasticsearch_client=FakeElasticsearch(),
+        embedding_client=FakeEmbeddingClient(),
+        index_name="company_policy_documents",
+        embedding_model="nomic-embed-text",
+    )
+
+    fused = searcher._reciprocal_rank_fusion(
+        vector_hits=[build_hit("travel-expense-policy:0"), build_hit("remote-work-policy:0")],
+        keyword_hits=[build_hit("travel-expense-policy:0"), build_hit("data-security-policy:0")],
+    )
+
+    assert [hit["_source"]["chunk_id"] for hit in fused] == [
+        "travel-expense-policy:0",
+        "remote-work-policy:0",
+        "data-security-policy:0",
+    ]
+    assert fused[0]["_score"] > fused[1]["_score"]
