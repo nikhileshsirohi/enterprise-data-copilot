@@ -2,11 +2,40 @@ from django.contrib.auth import get_user_model
 
 from backend.ai_service.schemas.ask import AskResponse
 from backend.ai_service.services.chat_history import (
+    ChatContextMessage,
     ChatHistoryReader,
     ChatHistoryRecorder,
     ChatPersistenceError,
+    RedisChatMemory,
 )
 from backend.django_app.core.models import ChatMessage, ChatSession
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.lists = {}
+        self.ttls = {}
+
+    def rpush(self, key, *values):
+        self.lists.setdefault(key, []).extend(values)
+
+    def ltrim(self, key, start, end):
+        values = self.lists.get(key, [])
+        self.lists[key] = values[start:] if end == -1 else values[start : end + 1]
+
+    def expire(self, key, seconds):
+        self.ttls[key] = seconds
+
+    def lrange(self, key, start, end):
+        values = self.lists.get(key, [])
+        return values[start:] if end == -1 else values[start : end + 1]
+
+    def delete(self, key):
+        self.lists.pop(key, None)
+
+
+def build_redis_memory() -> RedisChatMemory:
+    return RedisChatMemory(redis_client=FakeRedis())
 
 
 def build_answer() -> AskResponse:
@@ -26,7 +55,7 @@ def build_answer() -> AskResponse:
 
 
 def test_chat_history_skips_without_user_or_session() -> None:
-    result = ChatHistoryRecorder().record_exchange(
+    result = ChatHistoryRecorder(redis_memory=build_redis_memory()).record_exchange(
         user_id=None,
         session_id=None,
         question="hello",
@@ -39,8 +68,9 @@ def test_chat_history_skips_without_user_or_session() -> None:
 
 def test_chat_history_creates_session_and_messages(db) -> None:
     user = get_user_model().objects.create_user(username="copilot-user")
+    redis_memory = build_redis_memory()
 
-    result = ChatHistoryRecorder().record_exchange(
+    result = ChatHistoryRecorder(redis_memory=redis_memory).record_exchange(
         user_id=user.id,
         session_id=None,
         question="committed quantity of PO1001",
@@ -67,7 +97,7 @@ def test_chat_history_appends_to_existing_session(db) -> None:
     user = get_user_model().objects.create_user(username="copilot-user")
     session = ChatSession.objects.create(session_id="chat_test", user=user)
 
-    result = ChatHistoryRecorder().record_exchange(
+    result = ChatHistoryRecorder(redis_memory=build_redis_memory()).record_exchange(
         user_id=user.id,
         session_id=session.session_id,
         question="next question",
@@ -86,7 +116,7 @@ def test_chat_history_rejects_session_user_mismatch(db) -> None:
     session = ChatSession.objects.create(session_id="chat_owner", user=user)
 
     try:
-        ChatHistoryRecorder().record_exchange(
+        ChatHistoryRecorder(redis_memory=build_redis_memory()).record_exchange(
             user_id=other_user.id,
             session_id=session.session_id,
             question="bad",
@@ -106,7 +136,7 @@ def test_chat_history_reader_returns_recent_context_in_chronological_order(db) -
     ChatMessage.objects.create(session=session, role=ChatMessage.Role.ASSISTANT, content="second")
     ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content="third")
 
-    context = ChatHistoryReader().get_recent_context(
+    context = ChatHistoryReader(redis_memory=build_redis_memory()).get_recent_context(
         session_id=session.session_id,
         user_id=user.id,
         limit=2,
@@ -125,7 +155,7 @@ def test_chat_history_reader_rejects_session_user_mismatch(db) -> None:
     session = ChatSession.objects.create(session_id="chat_context_owner", user=user)
 
     try:
-        ChatHistoryReader().get_recent_context(
+        ChatHistoryReader(redis_memory=build_redis_memory()).get_recent_context(
             session_id=session.session_id,
             user_id=other_user.id,
             limit=2,
@@ -134,3 +164,42 @@ def test_chat_history_reader_rejects_session_user_mismatch(db) -> None:
         assert "does not belong" in str(exc)
     else:
         raise AssertionError("Expected ChatPersistenceError")
+
+
+def test_chat_history_reader_uses_redis_context_when_available(db) -> None:
+    user = get_user_model().objects.create_user(username="redis-context-user")
+    session = ChatSession.objects.create(session_id="chat_redis_context", user=user)
+    redis_memory = build_redis_memory()
+    redis_memory.append_messages(
+        session_id=session.session_id,
+        messages=[
+            ChatContextMessage(role=ChatMessage.Role.USER, content="from redis"),
+            ChatContextMessage(role=ChatMessage.Role.ASSISTANT, content="cached answer"),
+        ],
+    )
+
+    context = ChatHistoryReader(redis_memory=redis_memory).get_recent_context(
+        session_id=session.session_id,
+        user_id=user.id,
+        limit=2,
+    )
+
+    assert [message.content for message in context] == ["from redis", "cached answer"]
+
+
+def test_chat_history_reader_warms_redis_after_database_fallback(db) -> None:
+    user = get_user_model().objects.create_user(username="redis-warm-user")
+    session = ChatSession.objects.create(session_id="chat_redis_warm", user=user)
+    ChatMessage.objects.create(session=session, role=ChatMessage.Role.USER, content="first")
+    ChatMessage.objects.create(session=session, role=ChatMessage.Role.ASSISTANT, content="second")
+    redis_memory = build_redis_memory()
+
+    context = ChatHistoryReader(redis_memory=redis_memory).get_recent_context(
+        session_id=session.session_id,
+        user_id=user.id,
+        limit=2,
+    )
+    redis_context = redis_memory.get_recent_messages(session_id=session.session_id, limit=2)
+
+    assert [message.content for message in context] == ["first", "second"]
+    assert [message.content for message in redis_context] == ["first", "second"]
