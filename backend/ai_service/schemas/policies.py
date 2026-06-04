@@ -19,3 +19,16 @@ class PolicySearchResult(BaseModel):
 class PolicySearchResponse(BaseModel):
     query: str
     results: list[PolicySearchResult]
+
+
+class PolicyDocumentSummary(BaseModel):
+    document_id: str
+    document_title: str
+    source_path: str
+    chunk_count: int
+    max_chunk_index: int | None = None
+
+
+class PolicyDocumentListResponse(BaseModel):
+    index_name: str
+    documents: list[PolicyDocumentSummary]

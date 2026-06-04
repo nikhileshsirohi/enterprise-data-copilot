@@ -5,7 +5,7 @@ from typing import Any
 
 from elasticsearch import Elasticsearch, helpers
 
-from backend.ai_service.schemas.policies import PolicySearchResult
+from backend.ai_service.schemas.policies import PolicyDocumentSummary, PolicySearchResult
 from backend.ai_service.services.ollama_client import OllamaClient
 from backend.shared.config import get_settings
 
@@ -224,6 +224,53 @@ class PolicyVectorSearcher:
             keyword_hits=keyword_hits,
         )
         return [self._to_result(hit) for hit in fused_hits[:limit]]
+
+    def list_documents(self, limit: int = 100) -> list[PolicyDocumentSummary]:
+        if not self.elasticsearch_client.ping():
+            raise ConnectionError("Elasticsearch is not reachable")
+
+        if not self.elasticsearch_client.indices.exists(index=self.index_name):
+            return []
+
+        response = self.elasticsearch_client.search(
+            index=self.index_name,
+            size=0,
+            aggs={
+                "documents": {
+                    "terms": {
+                        "field": "document_id",
+                        "size": limit,
+                        "order": {"_key": "asc"},
+                    },
+                    "aggs": {
+                        "chunk_count": {"value_count": {"field": "chunk_id"}},
+                        "max_chunk_index": {"max": {"field": "chunk_index"}},
+                        "sample": {
+                            "top_hits": {
+                                "size": 1,
+                                "_source": ["document_id", "document_title", "source_path"],
+                            }
+                        },
+                    },
+                }
+            },
+        )
+
+        buckets = response.body["aggregations"]["documents"]["buckets"]
+        documents = []
+        for bucket in buckets:
+            source = bucket["sample"]["hits"]["hits"][0]["_source"]
+            max_chunk_index = bucket["max_chunk_index"]["value"]
+            documents.append(
+                PolicyDocumentSummary(
+                    document_id=source["document_id"],
+                    document_title=source["document_title"],
+                    source_path=source["source_path"],
+                    chunk_count=int(bucket["chunk_count"]["value"]),
+                    max_chunk_index=int(max_chunk_index) if max_chunk_index is not None else None,
+                )
+            )
+        return documents
 
     def _vector_search(self, *, query: str, candidate_size: int) -> list[dict[str, Any]]:
         query_embedding = self.embedding_client.embed(model=self.embedding_model, text=query)

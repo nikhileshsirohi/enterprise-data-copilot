@@ -25,6 +25,53 @@ class FakeElasticsearch:
         return True
 
 
+class FakeSearchResponse:
+    def __init__(self, body) -> None:
+        self.body = body
+
+
+class FakeDocumentListElasticsearch(FakeElasticsearch):
+    def __init__(self) -> None:
+        super().__init__()
+        self.indices.created["company_policy_documents"] = {}
+
+    def search(self, index, size, aggs):
+        assert index == "company_policy_documents"
+        assert size == 0
+        assert aggs["documents"]["terms"]["field"] == "document_id"
+        return FakeSearchResponse(
+            {
+                "aggregations": {
+                    "documents": {
+                        "buckets": [
+                            {
+                                "key": "travel-expense-policy",
+                                "chunk_count": {"value": 3},
+                                "max_chunk_index": {"value": 2.0},
+                                "sample": {
+                                    "hits": {
+                                        "hits": [
+                                            {
+                                                "_source": {
+                                                    "document_id": "travel-expense-policy",
+                                                    "document_title": "Travel Expense Policy",
+                                                    "source_path": (
+                                                        "data/company_policies/"
+                                                        "travel-expense-policy.pdf"
+                                                    ),
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                }
+            }
+        )
+
+
 class FakeEmbeddingClient:
     def embed(self, model: str, text: str):
         assert model == "nomic-embed-text"
@@ -121,3 +168,20 @@ def test_policy_searcher_preserves_best_elasticsearch_score_after_fusion() -> No
 
     assert fused[0]["_score"] == 0.8375926
     assert fused[0]["_fusion_score"] > 0
+
+
+def test_policy_searcher_lists_indexed_documents_from_aggregations() -> None:
+    searcher = PolicyVectorSearcher(
+        elasticsearch_client=FakeDocumentListElasticsearch(),
+        embedding_client=FakeEmbeddingClient(),
+        index_name="company_policy_documents",
+        embedding_model="nomic-embed-text",
+    )
+
+    documents = searcher.list_documents(limit=100)
+
+    assert len(documents) == 1
+    assert documents[0].document_id == "travel-expense-policy"
+    assert documents[0].document_title == "Travel Expense Policy"
+    assert documents[0].chunk_count == 3
+    assert documents[0].max_chunk_index == 2
