@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     semantic_cache_ttl_seconds: int = Field(default=86400, alias="SEMANTIC_CACHE_TTL_SECONDS")
 
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
+    policy_documents_index: str = Field(
+        default="company_policy_documents",
+        alias="POLICY_DOCUMENTS_INDEX",
+    )
+    policy_documents_dir: str = Field(
+        default="data/company_policies",
+        alias="POLICY_DOCUMENTS_DIR",
+    )
+    policy_chunk_size: int = Field(default=900, alias="POLICY_CHUNK_SIZE")
+    policy_chunk_overlap: int = Field(default=150, alias="POLICY_CHUNK_OVERLAP")
 
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
     ollama_reasoning_model: str = Field(default="qwen2.5:14b", alias="OLLAMA_REASONING_MODEL")

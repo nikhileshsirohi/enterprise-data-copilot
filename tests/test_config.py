@@ -11,6 +11,10 @@ def test_settings_load_from_environment() -> None:
     assert settings.redis_langgraph_state_prefix == "langgraph:ask"
     assert settings.redis_chat_history_prefix == "chat:history"
     assert settings.elasticsearch_url == "http://localhost:9200"
+    assert settings.policy_documents_index == "company_policy_documents"
+    assert settings.policy_documents_dir == "data/company_policies"
+    assert settings.policy_chunk_size == 900
+    assert settings.policy_chunk_overlap == 150
     assert settings.allowed_hosts == ["localhost", "127.0.0.1"]
     assert settings.api_rate_limit_requests == 120
     assert settings.api_rate_limit_window_seconds == 60

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from backend.ai_service.api.v1.routes import ask, health, metadata, sql, workflows
+from backend.ai_service.api.v1.routes import ask, health, metadata, policies, sql, workflows
 from backend.ai_service.security.jwt_auth import require_authenticated_user, require_staff_user
 
 api_router = APIRouter()
@@ -25,6 +25,12 @@ api_router.include_router(
     sql.router,
     prefix="/sql",
     tags=["sql"],
+    dependencies=staff_dependencies,
+)
+api_router.include_router(
+    policies.router,
+    prefix="/policies",
+    tags=["policies"],
     dependencies=staff_dependencies,
 )
 api_router.include_router(

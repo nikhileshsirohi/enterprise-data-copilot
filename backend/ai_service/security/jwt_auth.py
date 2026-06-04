@@ -5,6 +5,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from backend.ai_service.security.rate_limit import enforce_user_rate_limit
 from backend.shared.config import get_settings
 from backend.shared.django import ensure_django_setup
 
@@ -30,7 +31,9 @@ def require_authenticated_user(
 
     payload = _decode_access_token(credentials.credentials)
     user_id = _get_user_id(payload)
-    return _load_active_user(user_id)
+    user = _load_active_user(user_id)
+    enforce_user_rate_limit(user)
+    return user
 
 
 def require_staff_user(
