@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     )
     policy_chunk_size: int = Field(default=900, alias="POLICY_CHUNK_SIZE")
     policy_chunk_overlap: int = Field(default=150, alias="POLICY_CHUNK_OVERLAP")
+    intent_embedding_confidence_threshold: float = Field(
+        default=0.78,
+        alias="INTENT_EMBEDDING_CONFIDENCE_THRESHOLD",
+    )
+    intent_llm_fallback_enabled: bool = Field(default=True, alias="INTENT_LLM_FALLBACK_ENABLED")
 
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
     ollama_reasoning_model: str = Field(default="qwen2.5:14b", alias="OLLAMA_REASONING_MODEL")

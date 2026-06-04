@@ -15,6 +15,8 @@ def test_settings_load_from_environment() -> None:
     assert settings.policy_documents_dir == "data/company_policies"
     assert settings.policy_chunk_size == 900
     assert settings.policy_chunk_overlap == 150
+    assert settings.intent_embedding_confidence_threshold == 0.78
+    assert settings.intent_llm_fallback_enabled is True
     assert settings.allowed_hosts == ["localhost", "127.0.0.1"]
     assert settings.api_rate_limit_requests == 120
     assert settings.api_rate_limit_window_seconds == 60
