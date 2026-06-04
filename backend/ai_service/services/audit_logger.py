@@ -56,6 +56,7 @@ class AskAuditLogger:
             "question": record.question,
             "limit": record.limit,
             "status": record.status,
+            "answer_source": response.answer_source if response else None,
             "sql": response.sql if response else None,
             "is_sql_valid": response.is_sql_valid if response else None,
             "row_count": response.row_count if response else None,
@@ -68,6 +69,7 @@ class AskAuditLogger:
                 response.chat_context_message_count if response else None
             ),
             "workflow_run_id": response.workflow_run_id if response else None,
+            "policy_sources": response.policy_sources if response else None,
             "persisted": response.persisted if response else None,
             "retry_count": response.retry_count if response else None,
             "execution_error": response.execution_error if response else None,

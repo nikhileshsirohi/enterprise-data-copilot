@@ -13,6 +13,7 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     question: str
     answer: str
+    answer_source: str = "database"
     sql: str | None
     is_sql_valid: bool
     validation_reason: str | None
@@ -33,3 +34,4 @@ class AskResponse(BaseModel):
     used_chat_context: bool = False
     chat_context_message_count: int = 0
     workflow_run_id: str | None = None
+    policy_sources: list[dict] = Field(default_factory=list)
