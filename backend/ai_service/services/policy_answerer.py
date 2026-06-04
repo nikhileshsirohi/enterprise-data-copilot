@@ -50,6 +50,7 @@ class PolicyAnswerer:
                     }
                 ],
                 policy_sources=[],
+                citations=[],
             )
 
         answer = self._summarize(question=question, results=filtered_results)
@@ -72,6 +73,7 @@ class PolicyAnswerer:
                 }
             ],
             policy_sources=[result.model_dump() for result in filtered_results],
+            citations=self._build_citations(filtered_results),
         )
 
     def _summarize(self, question: str, results: list[PolicySearchResult]) -> str:
@@ -113,6 +115,7 @@ Answer the user's question using only the provided policy chunks.
 Do not use outside knowledge.
 If the chunks do not contain the answer, say that the policy documents do not specify it.
 Mention the policy document title in the answer.
+Do not invent citations. The API will attach structured citations separately.
 Keep the answer concise and business friendly.
 
 Policy context JSON:
@@ -120,3 +123,24 @@ Policy context JSON:
 
 Answer:
 """.strip()
+
+    def _build_citations(self, results: list[PolicySearchResult]) -> list[dict]:
+        citations = []
+        seen = set()
+        for result in results:
+            citation_key = (result.document_id, result.chunk_id)
+            if citation_key in seen:
+                continue
+            seen.add(citation_key)
+            citations.append(
+                {
+                    "source_type": "policy_document",
+                    "document_id": result.document_id,
+                    "document_title": result.document_title,
+                    "source_path": result.source_path,
+                    "chunk_id": result.chunk_id,
+                    "chunk_index": result.chunk_index,
+                    "score": round(result.score, 6),
+                }
+            )
+        return citations

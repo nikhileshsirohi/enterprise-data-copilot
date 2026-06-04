@@ -35,3 +35,4 @@ class AskResponse(BaseModel):
     chat_context_message_count: int = 0
     workflow_run_id: str | None = None
     policy_sources: list[dict] = Field(default_factory=list)
+    citations: list[dict] = Field(default_factory=list)

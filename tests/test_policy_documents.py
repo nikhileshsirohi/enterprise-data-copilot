@@ -98,4 +98,26 @@ def test_policy_searcher_reciprocal_rank_fusion_merges_duplicate_chunks() -> Non
         "remote-work-policy:0",
         "data-security-policy:0",
     ]
-    assert fused[0]["_score"] > fused[1]["_score"]
+    assert fused[0]["_fusion_score"] > fused[1]["_fusion_score"]
+    assert fused[0]["_score"] == 10.0
+
+
+def test_policy_searcher_preserves_best_elasticsearch_score_after_fusion() -> None:
+    searcher = PolicyVectorSearcher(
+        elasticsearch_client=FakeElasticsearch(),
+        embedding_client=FakeEmbeddingClient(),
+        index_name="company_policy_documents",
+        embedding_model="nomic-embed-text",
+    )
+    vector_hit = build_hit("travel-expense-policy:0")
+    vector_hit["_score"] = 0.8375926
+    keyword_hit = build_hit("travel-expense-policy:0")
+    keyword_hit["_score"] = 0.0327868
+
+    fused = searcher._reciprocal_rank_fusion(
+        vector_hits=[vector_hit],
+        keyword_hits=[keyword_hit],
+    )
+
+    assert fused[0]["_score"] == 0.8375926
+    assert fused[0]["_fusion_score"] > 0

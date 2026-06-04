@@ -266,10 +266,14 @@ class PolicyVectorSearcher:
             for rank, hit in enumerate(hits, start=1):
                 chunk_id = hit["_source"]["chunk_id"]
                 if chunk_id not in fused:
-                    fused[chunk_id] = {**hit, "_score": 0.0}
-                fused[chunk_id]["_score"] += 1.0 / (rank_constant + rank)
+                    fused[chunk_id] = {**hit, "_fusion_score": 0.0}
+                fused[chunk_id]["_fusion_score"] += 1.0 / (rank_constant + rank)
+                fused[chunk_id]["_score"] = max(
+                    float(fused[chunk_id].get("_score", 0.0)),
+                    float(hit.get("_score", 0.0)),
+                )
 
-        return sorted(fused.values(), key=lambda hit: hit["_score"], reverse=True)
+        return sorted(fused.values(), key=lambda hit: hit["_fusion_score"], reverse=True)
 
     def _to_result(self, hit: dict[str, Any]) -> PolicySearchResult:
         source = hit["_source"]

@@ -70,6 +70,7 @@ class AskAuditLogger:
             ),
             "workflow_run_id": response.workflow_run_id if response else None,
             "policy_sources": response.policy_sources if response else None,
+            "citations": response.citations if response else None,
             "persisted": response.persisted if response else None,
             "retry_count": response.retry_count if response else None,
             "execution_error": response.execution_error if response else None,

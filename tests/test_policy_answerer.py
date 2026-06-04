@@ -42,6 +42,17 @@ def test_policy_answerer_returns_rag_answer_with_sources() -> None:
     assert response.metadata[0]["policy_rag_min_score"] == 0.75
     assert response.metadata[0]["accepted_policy_chunks"] == 1
     assert response.policy_sources[0]["document_id"] == "travel-expense-policy"
+    assert response.citations == [
+        {
+            "source_type": "policy_document",
+            "document_id": "travel-expense-policy",
+            "document_title": "Travel Expense Policy",
+            "source_path": "data/company_policies/travel-expense-policy.pdf",
+            "chunk_id": "travel-expense-policy:0",
+            "chunk_index": 0,
+            "score": 0.91,
+        }
+    ]
     assert "60 USD per day" in response.answer
 
 
@@ -55,6 +66,7 @@ def test_policy_answerer_handles_no_results() -> None:
     assert response.answer_source == "policy"
     assert response.row_count == 0
     assert response.policy_sources == []
+    assert response.citations == []
     assert "enough confidence" in response.answer.lower()
 
 
@@ -79,5 +91,39 @@ def test_policy_answerer_rejects_low_score_results() -> None:
 
     assert response.row_count == 0
     assert response.policy_sources == []
+    assert response.citations == []
     assert response.metadata[0]["retrieved_policy_chunks"] == 1
     assert response.metadata[0]["accepted_policy_chunks"] == 0
+
+
+def test_policy_answerer_deduplicates_citations() -> None:
+    class DuplicatePolicySearcher:
+        def search(self, query: str, limit: int = 5):
+            return [
+                PolicySearchResult(
+                    document_id="travel-expense-policy",
+                    document_title="Travel Expense Policy",
+                    source_path="data/company_policies/travel-expense-policy.pdf",
+                    chunk_id="travel-expense-policy:0",
+                    chunk_index=0,
+                    text="Meal reimbursement is capped at 60 USD per day.",
+                    score=0.91,
+                ),
+                PolicySearchResult(
+                    document_id="travel-expense-policy",
+                    document_title="Travel Expense Policy",
+                    source_path="data/company_policies/travel-expense-policy.pdf",
+                    chunk_id="travel-expense-policy:0",
+                    chunk_index=0,
+                    text="Meal reimbursement is capped at 60 USD per day.",
+                    score=0.90,
+                ),
+            ]
+
+    response = PolicyAnswerer(
+        policy_searcher=DuplicatePolicySearcher(),
+        llm_client=FakeLLMClient(),
+    ).ask("What is the reimbursement limit for meals?")
+
+    assert len(response.policy_sources) == 2
+    assert len(response.citations) == 1
