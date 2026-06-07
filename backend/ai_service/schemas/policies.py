@@ -32,3 +32,14 @@ class PolicyDocumentSummary(BaseModel):
 class PolicyDocumentListResponse(BaseModel):
     index_name: str
     documents: list[PolicyDocumentSummary]
+
+
+class PolicyDocumentReindexRequest(BaseModel):
+    reset: bool = False
+
+
+class PolicyDocumentReindexResponse(BaseModel):
+    index_name: str
+    documents_found: int
+    chunks_indexed: int
+    reset: bool

@@ -1,9 +1,14 @@
 from fastapi.testclient import TestClient
 
-from backend.ai_service.api.v1.routes.policies import get_policy_searcher
+from backend.ai_service.api.v1.routes.policies import (
+    get_policy_indexer,
+    get_policy_loader,
+    get_policy_searcher,
+)
 from backend.ai_service.main import app
 from backend.ai_service.schemas.policies import PolicyDocumentSummary, PolicySearchResult
 from backend.ai_service.security.jwt_auth import AuthenticatedUser, require_authenticated_user
+from backend.ai_service.services.policy_documents import PolicyDocument
 
 
 class FakePolicySearcher:
@@ -31,6 +36,32 @@ class FakePolicySearcher:
                 max_chunk_index=1,
             )
         ][:limit]
+
+
+class FakePolicyLoader:
+    def load_directory(self, directory: str):
+        assert directory == "data/company_policies"
+        return [
+            PolicyDocument(
+                document_id="remote-work-policy",
+                title="Remote Work Policy",
+                source_path="data/company_policies/remote-work-policy.pdf",
+                text="Company data must be accessed using VPN.",
+            )
+        ]
+
+
+class FakePolicyIndexer:
+    def __init__(self) -> None:
+        self.recreated = False
+
+    def recreate_index(self) -> None:
+        self.recreated = True
+
+    def index_documents(self, documents):
+        assert len(documents) == 1
+        assert self.recreated is True
+        return 2
 
 
 def test_policy_search_endpoint_returns_vector_results() -> None:
@@ -101,3 +132,26 @@ def test_policy_documents_endpoint_returns_indexed_documents() -> None:
             "max_chunk_index": 1,
         }
     ]
+
+
+def test_policy_documents_reindex_endpoint_indexes_configured_directory() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=1,
+        username="staff-user",
+        is_staff=True,
+    )
+    app.dependency_overrides[get_policy_loader] = lambda: FakePolicyLoader()
+    app.dependency_overrides[get_policy_indexer] = lambda: FakePolicyIndexer()
+    client = TestClient(app)
+
+    response = client.post("/api/v1/policies/documents/reindex", json={"reset": True})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "index_name": "company_policy_documents",
+        "documents_found": 1,
+        "chunks_indexed": 2,
+        "reset": True,
+    }
