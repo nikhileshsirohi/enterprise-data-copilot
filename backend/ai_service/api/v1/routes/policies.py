@@ -12,6 +12,11 @@ from backend.ai_service.schemas.policies import (
     PolicySearchRequest,
     PolicySearchResponse,
 )
+from backend.ai_service.security.jwt_auth import AuthenticatedUser, require_staff_user
+from backend.ai_service.services.audit_logger import (
+    PolicyDocumentAuditLogger,
+    PolicyDocumentAuditRecord,
+)
 from backend.ai_service.services.policy_documents import (
     PolicyDocumentError,
     PolicyDocumentIndexer,
@@ -40,6 +45,10 @@ def get_policy_loader() -> PolicyDocumentLoader:
 
 def get_policy_storage() -> PolicyDocumentStorage:
     return PolicyDocumentStorage()
+
+
+def get_policy_audit_logger() -> PolicyDocumentAuditLogger:
+    return PolicyDocumentAuditLogger()
 
 
 @router.post("/search", response_model=PolicySearchResponse)
@@ -77,6 +86,8 @@ def reindex_policy_documents(
     request: PolicyDocumentReindexRequest,
     indexer: Annotated[PolicyDocumentIndexer, Depends(get_policy_indexer)],
     loader: Annotated[PolicyDocumentLoader, Depends(get_policy_loader)],
+    current_user: Annotated[AuthenticatedUser, Depends(require_staff_user)],
+    audit_logger: Annotated[PolicyDocumentAuditLogger, Depends(get_policy_audit_logger)],
 ) -> PolicyDocumentReindexResponse:
     settings = get_settings()
     try:
@@ -89,18 +100,30 @@ def reindex_policy_documents(
     except ConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return PolicyDocumentReindexResponse(
+    response = PolicyDocumentReindexResponse(
         index_name=settings.policy_documents_index,
         documents_found=len(documents),
         chunks_indexed=chunks_indexed,
         reset=request.reset,
     )
+    audit_logger.record(
+        PolicyDocumentAuditRecord(
+            user_id=current_user.user_id,
+            action="policy_document.reindex",
+            entity_id=settings.policy_documents_index,
+            status="SUCCESS",
+            metadata=response.model_dump(),
+        )
+    )
+    return response
 
 
 @router.post("/documents/upload", response_model=PolicyDocumentUploadResponse)
 def upload_policy_document(
     request: PolicyDocumentUploadRequest,
     storage: Annotated[PolicyDocumentStorage, Depends(get_policy_storage)],
+    current_user: Annotated[AuthenticatedUser, Depends(require_staff_user)],
+    audit_logger: Annotated[PolicyDocumentAuditLogger, Depends(get_policy_audit_logger)],
 ) -> PolicyDocumentUploadResponse:
     settings = get_settings()
     try:
@@ -113,17 +136,30 @@ def upload_policy_document(
     except PolicyDocumentError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PolicyDocumentUploadResponse(
+    response = PolicyDocumentUploadResponse(
         filename=stored_document.filename,
         source_path=stored_document.source_path,
         size_bytes=stored_document.size_bytes,
     )
+    audit_logger.record(
+        PolicyDocumentAuditRecord(
+            user_id=current_user.user_id,
+            action="policy_document.upload",
+            entity_id=stored_document.filename,
+            status="SUCCESS",
+            metadata=response.model_dump(),
+        )
+    )
+    return response
 
 
 @router.delete("/documents/{filename}", response_model=PolicyDocumentDeleteResponse)
 def delete_policy_document(
     filename: str,
     storage: Annotated[PolicyDocumentStorage, Depends(get_policy_storage)],
+    indexer: Annotated[PolicyDocumentIndexer, Depends(get_policy_indexer)],
+    current_user: Annotated[AuthenticatedUser, Depends(require_staff_user)],
+    audit_logger: Annotated[PolicyDocumentAuditLogger, Depends(get_policy_audit_logger)],
 ) -> PolicyDocumentDeleteResponse:
     settings = get_settings()
     try:
@@ -131,11 +167,26 @@ def delete_policy_document(
             directory=settings.policy_documents_dir,
             filename=filename,
         )
+        indexed_chunks_deleted = indexer.delete_document_chunks(deleted_document.document_id)
     except PolicyDocumentError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return PolicyDocumentDeleteResponse(
+    response = PolicyDocumentDeleteResponse(
         filename=deleted_document.filename,
         source_path=deleted_document.source_path,
         deleted=deleted_document.deleted,
+        document_id=deleted_document.document_id,
+        indexed_chunks_deleted=indexed_chunks_deleted,
     )
+    audit_logger.record(
+        PolicyDocumentAuditRecord(
+            user_id=current_user.user_id,
+            action="policy_document.delete",
+            entity_id=deleted_document.filename,
+            status="SUCCESS",
+            metadata=response.model_dump(),
+        )
+    )
+    return response

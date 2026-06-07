@@ -60,3 +60,5 @@ class PolicyDocumentDeleteResponse(BaseModel):
     filename: str
     source_path: str
     deleted: bool
+    document_id: str
+    indexed_chunks_deleted: int

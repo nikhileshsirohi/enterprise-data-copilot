@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from backend.ai_service.schemas.ask import AskResponse
 from backend.shared.django import ensure_django_setup
@@ -17,6 +18,55 @@ class AskAuditRecord:
     response: AskResponse | None = None
     error: str | None = None
     error_type: str | None = None
+
+
+@dataclass(frozen=True)
+class PolicyDocumentAuditRecord:
+    user_id: int | None
+    action: str
+    entity_id: str
+    status: str
+    metadata: dict[str, Any]
+    error: str | None = None
+    error_type: str | None = None
+
+
+class PolicyDocumentAuditLogger:
+    entity_type = "policy_document"
+
+    def record(self, record: PolicyDocumentAuditRecord) -> None:
+        try:
+            ensure_django_setup()
+
+            from django.contrib.auth import get_user_model
+
+            from backend.django_app.core.models import AuditLog
+
+            user = None
+            if record.user_id:
+                user = get_user_model().objects.filter(id=record.user_id).first()
+
+            AuditLog.objects.create(
+                user=user,
+                action=record.action,
+                entity_type=self.entity_type,
+                entity_id=record.entity_id,
+                metadata={
+                    **record.metadata,
+                    "status": record.status,
+                    "error": record.error,
+                    "error_type": record.error_type,
+                },
+            )
+            logger.info(
+                "audit.policy_document_recorded action=%s status=%s user_id=%s entity_id=%s",
+                record.action,
+                record.status,
+                record.user_id,
+                record.entity_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("audit.policy_document_failed error=%s", exc)
 
 
 class AskAuditLogger:

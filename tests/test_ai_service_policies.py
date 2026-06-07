@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.ai_service.api.v1.routes.policies import (
+    get_policy_audit_logger,
     get_policy_indexer,
     get_policy_loader,
     get_policy_searcher,
@@ -68,6 +69,10 @@ class FakePolicyIndexer:
         assert self.recreated is True
         return 2
 
+    def delete_document_chunks(self, document_id: str):
+        assert document_id == "benefits-policy"
+        return 4
+
 
 class FakePolicyStorage:
     def save_base64_document(self, *, directory, filename, content_base64, max_bytes):
@@ -88,7 +93,15 @@ class FakePolicyStorage:
             filename="benefits-policy.txt",
             source_path="data/company_policies/benefits-policy.txt",
             deleted=True,
+            document_id="benefits-policy",
         )
+
+
+class FakePolicyAuditLogger:
+    def record(self, record) -> None:
+        assert record.user_id == 1
+        assert record.action.startswith("policy_document.")
+        assert record.status == "SUCCESS"
 
 
 def test_policy_search_endpoint_returns_vector_results() -> None:
@@ -169,6 +182,7 @@ def test_policy_documents_reindex_endpoint_indexes_configured_directory() -> Non
     )
     app.dependency_overrides[get_policy_loader] = lambda: FakePolicyLoader()
     app.dependency_overrides[get_policy_indexer] = lambda: FakePolicyIndexer()
+    app.dependency_overrides[get_policy_audit_logger] = lambda: FakePolicyAuditLogger()
     client = TestClient(app)
 
     response = client.post("/api/v1/policies/documents/reindex", json={"reset": True})
@@ -191,6 +205,7 @@ def test_policy_documents_upload_endpoint_saves_policy_file() -> None:
         is_staff=True,
     )
     app.dependency_overrides[get_policy_storage] = lambda: FakePolicyStorage()
+    app.dependency_overrides[get_policy_audit_logger] = lambda: FakePolicyAuditLogger()
     client = TestClient(app)
 
     response = client.post(
@@ -218,6 +233,8 @@ def test_policy_documents_delete_endpoint_removes_policy_file() -> None:
         is_staff=True,
     )
     app.dependency_overrides[get_policy_storage] = lambda: FakePolicyStorage()
+    app.dependency_overrides[get_policy_indexer] = lambda: FakePolicyIndexer()
+    app.dependency_overrides[get_policy_audit_logger] = lambda: FakePolicyAuditLogger()
     client = TestClient(app)
 
     response = client.delete("/api/v1/policies/documents/benefits-policy.txt")
@@ -229,4 +246,6 @@ def test_policy_documents_delete_endpoint_removes_policy_file() -> None:
         "filename": "benefits-policy.txt",
         "source_path": "data/company_policies/benefits-policy.txt",
         "deleted": True,
+        "document_id": "benefits-policy",
+        "indexed_chunks_deleted": 4,
     }

@@ -48,6 +48,7 @@ class DeletedPolicyDocument:
     filename: str
     source_path: str
     deleted: bool
+    document_id: str
 
 
 class PolicyDocumentLoader:
@@ -155,6 +156,7 @@ class PolicyDocumentStorage:
             filename=safe_filename,
             source_path=str(target_path),
             deleted=True,
+            document_id=Path(safe_filename).stem,
         )
 
 
@@ -275,6 +277,28 @@ class PolicyDocumentIndexer:
         )
         logger.info("policy_documents.indexed index=%s chunks=%s", self.index_name, success_count)
         return int(success_count)
+
+    def delete_document_chunks(self, document_id: str) -> int:
+        if not self.elasticsearch_client.ping():
+            raise ConnectionError("Elasticsearch is not reachable")
+
+        if not self.elasticsearch_client.indices.exists(index=self.index_name):
+            return 0
+
+        response = self.elasticsearch_client.delete_by_query(
+            index=self.index_name,
+            query={"term": {"document_id": document_id}},
+            refresh=True,
+            conflicts="proceed",
+        )
+        deleted_count = int(response.body.get("deleted", 0))
+        logger.info(
+            "policy_documents.deleted_index_chunks index=%s document_id=%s chunks=%s",
+            self.index_name,
+            document_id,
+            deleted_count,
+        )
+        return deleted_count
 
 
 class PolicyVectorSearcher:

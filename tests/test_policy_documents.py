@@ -74,6 +74,22 @@ class FakeDocumentListElasticsearch(FakeElasticsearch):
         )
 
 
+class FakeDeleteByQueryElasticsearch(FakeElasticsearch):
+    def __init__(self) -> None:
+        super().__init__()
+        self.indices.created["company_policy_documents"] = {}
+        self.delete_request = None
+
+    def delete_by_query(self, index, query, refresh, conflicts):
+        self.delete_request = {
+            "index": index,
+            "query": query,
+            "refresh": refresh,
+            "conflicts": conflicts,
+        }
+        return FakeSearchResponse({"deleted": 4})
+
+
 class FakeEmbeddingClient:
     def embed(self, model: str, text: str):
         assert model == "nomic-embed-text"
@@ -248,6 +264,7 @@ def test_policy_document_storage_deletes_supported_document(tmp_path) -> None:
 
     assert deleted.filename == "benefits-policy.txt"
     assert deleted.deleted is True
+    assert deleted.document_id == "benefits-policy"
     assert not document_path.exists()
 
 
@@ -263,3 +280,24 @@ def test_policy_document_storage_rejects_missing_delete_target(tmp_path) -> None
         assert "does not exist" in str(exc)
     else:
         raise AssertionError("Expected missing policy delete validation to fail.")
+
+
+def test_policy_indexer_deletes_indexed_chunks_for_document() -> None:
+    fake_es = FakeDeleteByQueryElasticsearch()
+    indexer = PolicyDocumentIndexer(
+        elasticsearch_client=fake_es,
+        embedding_client=FakeEmbeddingClient(),
+        index_name="company_policy_documents",
+        embedding_model="nomic-embed-text",
+        chunker=PolicyChunker(chunk_size=100, chunk_overlap=10),
+    )
+
+    deleted_count = indexer.delete_document_chunks("benefits-policy")
+
+    assert deleted_count == 4
+    assert fake_es.delete_request == {
+        "index": "company_policy_documents",
+        "query": {"term": {"document_id": "benefits-policy"}},
+        "refresh": True,
+        "conflicts": "proceed",
+    }

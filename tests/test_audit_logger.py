@@ -1,7 +1,12 @@
 from django.contrib.auth import get_user_model
 
 from backend.ai_service.schemas.ask import AskResponse
-from backend.ai_service.services.audit_logger import AskAuditLogger, AskAuditRecord
+from backend.ai_service.services.audit_logger import (
+    AskAuditLogger,
+    AskAuditRecord,
+    PolicyDocumentAuditLogger,
+    PolicyDocumentAuditRecord,
+)
 from backend.django_app.core.models import AuditLog
 
 
@@ -70,3 +75,30 @@ def test_ask_audit_logger_records_error_without_user(db) -> None:
     assert audit.metadata["error"] == "Ollama is not reachable"
     assert audit.metadata["error_type"] == "OllamaError"
     assert audit.metadata["sql"] is None
+
+
+def test_policy_document_audit_logger_records_admin_action(db) -> None:
+    user = get_user_model().objects.create_user(username="policy-admin", is_staff=True)
+
+    PolicyDocumentAuditLogger().record(
+        PolicyDocumentAuditRecord(
+            user_id=user.id,
+            action="policy_document.upload",
+            entity_id="benefits-policy.txt",
+            status="SUCCESS",
+            metadata={
+                "filename": "benefits-policy.txt",
+                "source_path": "data/company_policies/benefits-policy.txt",
+                "size_bytes": 15,
+            },
+        )
+    )
+
+    audit = AuditLog.objects.get(action="policy_document.upload")
+    assert audit.user == user
+    assert audit.entity_type == "policy_document"
+    assert audit.entity_id == "benefits-policy.txt"
+    assert audit.metadata["status"] == "SUCCESS"
+    assert audit.metadata["filename"] == "benefits-policy.txt"
+    assert audit.metadata["size_bytes"] == 15
+    assert audit.metadata["error"] is None
