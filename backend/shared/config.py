@@ -75,6 +75,7 @@ class Settings(BaseSettings):
         default=4,
         alias="POLICY_HYBRID_CANDIDATE_MULTIPLIER",
     )
+    policy_upload_max_bytes: int = Field(default=10_485_760, alias="POLICY_UPLOAD_MAX_BYTES")
     intent_embedding_confidence_threshold: float = Field(
         default=0.78,
         alias="INTENT_EMBEDDING_CONFIDENCE_THRESHOLD",

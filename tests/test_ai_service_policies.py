@@ -4,11 +4,16 @@ from backend.ai_service.api.v1.routes.policies import (
     get_policy_indexer,
     get_policy_loader,
     get_policy_searcher,
+    get_policy_storage,
 )
 from backend.ai_service.main import app
 from backend.ai_service.schemas.policies import PolicyDocumentSummary, PolicySearchResult
 from backend.ai_service.security.jwt_auth import AuthenticatedUser, require_authenticated_user
-from backend.ai_service.services.policy_documents import PolicyDocument
+from backend.ai_service.services.policy_documents import (
+    DeletedPolicyDocument,
+    PolicyDocument,
+    StoredPolicyDocument,
+)
 
 
 class FakePolicySearcher:
@@ -62,6 +67,28 @@ class FakePolicyIndexer:
         assert len(documents) == 1
         assert self.recreated is True
         return 2
+
+
+class FakePolicyStorage:
+    def save_base64_document(self, *, directory, filename, content_base64, max_bytes):
+        assert directory == "data/company_policies"
+        assert filename == "benefits-policy.txt"
+        assert content_base64 == "QmVuZWZpdHMgcG9saWN5"
+        assert max_bytes == 10_485_760
+        return StoredPolicyDocument(
+            filename="benefits-policy.txt",
+            source_path="data/company_policies/benefits-policy.txt",
+            size_bytes=15,
+        )
+
+    def delete_document(self, *, directory, filename):
+        assert directory == "data/company_policies"
+        assert filename == "benefits-policy.txt"
+        return DeletedPolicyDocument(
+            filename="benefits-policy.txt",
+            source_path="data/company_policies/benefits-policy.txt",
+            deleted=True,
+        )
 
 
 def test_policy_search_endpoint_returns_vector_results() -> None:
@@ -154,4 +181,52 @@ def test_policy_documents_reindex_endpoint_indexes_configured_directory() -> Non
         "documents_found": 1,
         "chunks_indexed": 2,
         "reset": True,
+    }
+
+
+def test_policy_documents_upload_endpoint_saves_policy_file() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=1,
+        username="staff-user",
+        is_staff=True,
+    )
+    app.dependency_overrides[get_policy_storage] = lambda: FakePolicyStorage()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/policies/documents/upload",
+        json={
+            "filename": "benefits-policy.txt",
+            "content_base64": "QmVuZWZpdHMgcG9saWN5",
+        },
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "filename": "benefits-policy.txt",
+        "source_path": "data/company_policies/benefits-policy.txt",
+        "size_bytes": 15,
+    }
+
+
+def test_policy_documents_delete_endpoint_removes_policy_file() -> None:
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=1,
+        username="staff-user",
+        is_staff=True,
+    )
+    app.dependency_overrides[get_policy_storage] = lambda: FakePolicyStorage()
+    client = TestClient(app)
+
+    response = client.delete("/api/v1/policies/documents/benefits-policy.txt")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "filename": "benefits-policy.txt",
+        "source_path": "data/company_policies/benefits-policy.txt",
+        "deleted": True,
     }

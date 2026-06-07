@@ -1,4 +1,6 @@
 import logging
+from base64 import b64decode
+from binascii import Error as Base64DecodeError
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +34,20 @@ class PolicyChunk:
     chunk_id: str
     chunk_index: int
     text: str
+
+
+@dataclass(frozen=True)
+class StoredPolicyDocument:
+    filename: str
+    source_path: str
+    size_bytes: int
+
+
+@dataclass(frozen=True)
+class DeletedPolicyDocument:
+    filename: str
+    source_path: str
+    deleted: bool
 
 
 class PolicyDocumentLoader:
@@ -76,6 +92,70 @@ class PolicyDocumentLoader:
 
         reader = PdfReader(str(path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+class PolicyDocumentStorage:
+    supported_suffixes = PolicyDocumentLoader.supported_suffixes
+
+    def save_base64_document(
+        self,
+        *,
+        directory: str,
+        filename: str,
+        content_base64: str,
+        max_bytes: int,
+    ) -> StoredPolicyDocument:
+        safe_filename = self._validate_filename(filename)
+        try:
+            content = b64decode(content_base64, validate=True)
+        except (Base64DecodeError, ValueError) as exc:
+            raise PolicyDocumentError("Policy document content must be valid base64.") from exc
+
+        if not content:
+            raise PolicyDocumentError("Policy document content cannot be empty.")
+        if len(content) > max_bytes:
+            raise PolicyDocumentError(
+                f"Policy document exceeds maximum size of {max_bytes} bytes."
+            )
+
+        base_path = Path(directory)
+        base_path.mkdir(parents=True, exist_ok=True)
+        target_path = (base_path / safe_filename).resolve()
+        if not target_path.is_relative_to(base_path.resolve()):
+            raise PolicyDocumentError("Policy document filename is not allowed.")
+
+        target_path.write_bytes(content)
+        return StoredPolicyDocument(
+            filename=safe_filename,
+            source_path=str(target_path),
+            size_bytes=len(content),
+        )
+
+    def _validate_filename(self, filename: str) -> str:
+        if filename != Path(filename).name or "\\" in filename:
+            raise PolicyDocumentError("Policy document filename must not contain path segments.")
+
+        suffix = Path(filename).suffix.lower()
+        if suffix not in self.supported_suffixes:
+            allowed = ", ".join(sorted(self.supported_suffixes))
+            raise PolicyDocumentError(f"Unsupported policy document type. Allowed: {allowed}.")
+        return filename
+
+    def delete_document(self, *, directory: str, filename: str) -> DeletedPolicyDocument:
+        safe_filename = self._validate_filename(filename)
+        base_path = Path(directory)
+        target_path = (base_path / safe_filename).resolve()
+        if not target_path.is_relative_to(base_path.resolve()):
+            raise PolicyDocumentError("Policy document filename is not allowed.")
+        if not target_path.exists() or not target_path.is_file():
+            raise PolicyDocumentError(f"Policy document does not exist: {safe_filename}")
+
+        target_path.unlink()
+        return DeletedPolicyDocument(
+            filename=safe_filename,
+            source_path=str(target_path),
+            deleted=True,
+        )
 
 
 class PolicyChunker:

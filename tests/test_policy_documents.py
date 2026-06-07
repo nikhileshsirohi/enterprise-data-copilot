@@ -1,7 +1,9 @@
 from backend.ai_service.services.policy_documents import (
     PolicyChunker,
     PolicyDocument,
+    PolicyDocumentError,
     PolicyDocumentIndexer,
+    PolicyDocumentStorage,
     PolicyVectorSearcher,
 )
 
@@ -185,3 +187,79 @@ def test_policy_searcher_lists_indexed_documents_from_aggregations() -> None:
     assert documents[0].document_title == "Travel Expense Policy"
     assert documents[0].chunk_count == 3
     assert documents[0].max_chunk_index == 2
+
+
+def test_policy_document_storage_saves_supported_base64_document(tmp_path) -> None:
+    storage = PolicyDocumentStorage()
+
+    stored = storage.save_base64_document(
+        directory=str(tmp_path),
+        filename="benefits-policy.txt",
+        content_base64="QmVuZWZpdHMgcG9saWN5",
+        max_bytes=100,
+    )
+
+    assert stored.filename == "benefits-policy.txt"
+    assert stored.size_bytes == 15
+    assert (tmp_path / "benefits-policy.txt").read_text() == "Benefits policy"
+
+
+def test_policy_document_storage_rejects_path_segments(tmp_path) -> None:
+    storage = PolicyDocumentStorage()
+
+    try:
+        storage.save_base64_document(
+            directory=str(tmp_path),
+            filename="../secrets.txt",
+            content_base64="c2VjcmV0",
+            max_bytes=100,
+        )
+    except PolicyDocumentError as exc:
+        assert "path segments" in str(exc)
+    else:
+        raise AssertionError("Expected path segment validation to fail.")
+
+
+def test_policy_document_storage_rejects_unsupported_extension(tmp_path) -> None:
+    storage = PolicyDocumentStorage()
+
+    try:
+        storage.save_base64_document(
+            directory=str(tmp_path),
+            filename="policy.exe",
+            content_base64="cG9saWN5",
+            max_bytes=100,
+        )
+    except PolicyDocumentError as exc:
+        assert "Unsupported policy document type" in str(exc)
+    else:
+        raise AssertionError("Expected extension validation to fail.")
+
+
+def test_policy_document_storage_deletes_supported_document(tmp_path) -> None:
+    storage = PolicyDocumentStorage()
+    document_path = tmp_path / "benefits-policy.txt"
+    document_path.write_text("Benefits policy")
+
+    deleted = storage.delete_document(
+        directory=str(tmp_path),
+        filename="benefits-policy.txt",
+    )
+
+    assert deleted.filename == "benefits-policy.txt"
+    assert deleted.deleted is True
+    assert not document_path.exists()
+
+
+def test_policy_document_storage_rejects_missing_delete_target(tmp_path) -> None:
+    storage = PolicyDocumentStorage()
+
+    try:
+        storage.delete_document(
+            directory=str(tmp_path),
+            filename="missing-policy.txt",
+        )
+    except PolicyDocumentError as exc:
+        assert "does not exist" in str(exc)
+    else:
+        raise AssertionError("Expected missing policy delete validation to fail.")

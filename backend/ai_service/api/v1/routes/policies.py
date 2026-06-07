@@ -3,9 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.ai_service.schemas.policies import (
+    PolicyDocumentDeleteResponse,
     PolicyDocumentListResponse,
     PolicyDocumentReindexRequest,
     PolicyDocumentReindexResponse,
+    PolicyDocumentUploadRequest,
+    PolicyDocumentUploadResponse,
     PolicySearchRequest,
     PolicySearchResponse,
 )
@@ -13,6 +16,7 @@ from backend.ai_service.services.policy_documents import (
     PolicyDocumentError,
     PolicyDocumentIndexer,
     PolicyDocumentLoader,
+    PolicyDocumentStorage,
     PolicyVectorSearcher,
     build_policy_indexer,
     build_policy_searcher,
@@ -32,6 +36,10 @@ def get_policy_indexer() -> PolicyDocumentIndexer:
 
 def get_policy_loader() -> PolicyDocumentLoader:
     return PolicyDocumentLoader()
+
+
+def get_policy_storage() -> PolicyDocumentStorage:
+    return PolicyDocumentStorage()
 
 
 @router.post("/search", response_model=PolicySearchResponse)
@@ -86,4 +94,48 @@ def reindex_policy_documents(
         documents_found=len(documents),
         chunks_indexed=chunks_indexed,
         reset=request.reset,
+    )
+
+
+@router.post("/documents/upload", response_model=PolicyDocumentUploadResponse)
+def upload_policy_document(
+    request: PolicyDocumentUploadRequest,
+    storage: Annotated[PolicyDocumentStorage, Depends(get_policy_storage)],
+) -> PolicyDocumentUploadResponse:
+    settings = get_settings()
+    try:
+        stored_document = storage.save_base64_document(
+            directory=settings.policy_documents_dir,
+            filename=request.filename,
+            content_base64=request.content_base64,
+            max_bytes=settings.policy_upload_max_bytes,
+        )
+    except PolicyDocumentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PolicyDocumentUploadResponse(
+        filename=stored_document.filename,
+        source_path=stored_document.source_path,
+        size_bytes=stored_document.size_bytes,
+    )
+
+
+@router.delete("/documents/{filename}", response_model=PolicyDocumentDeleteResponse)
+def delete_policy_document(
+    filename: str,
+    storage: Annotated[PolicyDocumentStorage, Depends(get_policy_storage)],
+) -> PolicyDocumentDeleteResponse:
+    settings = get_settings()
+    try:
+        deleted_document = storage.delete_document(
+            directory=settings.policy_documents_dir,
+            filename=filename,
+        )
+    except PolicyDocumentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PolicyDocumentDeleteResponse(
+        filename=deleted_document.filename,
+        source_path=deleted_document.source_path,
+        deleted=deleted_document.deleted,
     )

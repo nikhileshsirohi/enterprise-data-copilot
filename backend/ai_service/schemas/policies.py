@@ -43,3 +43,20 @@ class PolicyDocumentReindexResponse(BaseModel):
     documents_found: int
     chunks_indexed: int
     reset: bool
+
+
+class PolicyDocumentUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_base64: str = Field(min_length=1)
+
+
+class PolicyDocumentUploadResponse(BaseModel):
+    filename: str
+    source_path: str
+    size_bytes: int
+
+
+class PolicyDocumentDeleteResponse(BaseModel):
+    filename: str
+    source_path: str
+    deleted: bool
