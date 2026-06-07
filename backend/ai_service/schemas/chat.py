@@ -31,3 +31,18 @@ class ChatSessionDetailResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: list[ChatMessageDetail]
+
+
+class ChatSessionArchiveResponse(BaseModel):
+    session_id: str
+    archived: bool
+    is_active: bool
+
+
+class ChatSessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+
+class ChatSessionRenameResponse(BaseModel):
+    session_id: str
+    title: str

@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import connections
 from fastapi.testclient import TestClient
 
 from backend.ai_service.main import app
@@ -33,9 +34,8 @@ def test_chat_sessions_endpoint_lists_current_user_sessions() -> None:
         username=user.username,
         is_staff=False,
     )
-    client = TestClient(app)
-
-    response = client.get("/api/v1/chat/sessions")
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/sessions")
 
     app.dependency_overrides.clear()
 
@@ -45,6 +45,7 @@ def test_chat_sessions_endpoint_lists_current_user_sessions() -> None:
     assert body["sessions"][0]["session_id"] == "chat_user_owned"
     assert body["sessions"][0]["title"] == "Available stock"
     assert body["sessions"][0]["message_count"] == 2
+    connections.close_all()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -73,9 +74,8 @@ def test_chat_session_detail_endpoint_returns_messages() -> None:
         username=user.username,
         is_staff=False,
     )
-    client = TestClient(app)
-
-    response = client.get("/api/v1/chat/sessions/chat_detail")
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/sessions/chat_detail")
 
     app.dependency_overrides.clear()
 
@@ -90,6 +90,7 @@ def test_chat_session_detail_endpoint_returns_messages() -> None:
     assert body["messages"][0]["role"] == "USER"
     assert body["messages"][0]["metadata"] == {"limit": 5}
     assert body["messages"][1]["content"] == "PO1001 has committed quantity 4,983."
+    connections.close_all()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -107,11 +108,132 @@ def test_chat_session_detail_endpoint_blocks_other_users() -> None:
         username=other_user.username,
         is_staff=False,
     )
-    client = TestClient(app)
-
-    response = client.get("/api/v1/chat/sessions/chat_private")
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/sessions/chat_private")
 
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Chat session was not found."
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_session_archive_endpoint_soft_deletes_owned_session() -> None:
+    user = get_user_model().objects.create_user(username="chat-archive-user")
+    ChatSession.objects.create(
+        session_id="chat_archive",
+        user=user,
+        title="Archive me",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=user.id,
+        username=user.username,
+        is_staff=False,
+    )
+    with TestClient(app) as client:
+        response = client.delete("/api/v1/chat/sessions/chat_archive")
+        list_response = client.get("/api/v1/chat/sessions")
+        detail_response = client.get("/api/v1/chat/sessions/chat_archive")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "chat_archive",
+        "archived": True,
+        "is_active": False,
+    }
+    assert ChatSession.objects.get(session_id="chat_archive").is_active is False
+    assert list_response.status_code == 200
+    assert list_response.json()["sessions"] == []
+    assert detail_response.status_code == 404
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_session_archive_endpoint_blocks_other_users() -> None:
+    owner = get_user_model().objects.create_user(username="archive-owner")
+    other_user = get_user_model().objects.create_user(username="archive-intruder")
+    ChatSession.objects.create(
+        session_id="chat_archive_private",
+        user=owner,
+        title="Private archive",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=other_user.id,
+        username=other_user.username,
+        is_staff=False,
+    )
+    with TestClient(app) as client:
+        response = client.delete("/api/v1/chat/sessions/chat_archive_private")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert ChatSession.objects.get(session_id="chat_archive_private").is_active is True
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_session_rename_endpoint_updates_owned_session_title() -> None:
+    user = get_user_model().objects.create_user(username="chat-rename-user")
+    ChatSession.objects.create(
+        session_id="chat_rename",
+        user=user,
+        title="Old title",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=user.id,
+        username=user.username,
+        is_staff=False,
+    )
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/v1/chat/sessions/chat_rename/title",
+            json={"title": "  Inventory questions  "},
+        )
+        detail_response = client.get("/api/v1/chat/sessions/chat_rename")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "chat_rename",
+        "title": "Inventory questions",
+    }
+    assert ChatSession.objects.get(session_id="chat_rename").title == "Inventory questions"
+    assert detail_response.status_code == 200
+    assert detail_response.json()["title"] == "Inventory questions"
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_session_rename_endpoint_blocks_other_users() -> None:
+    owner = get_user_model().objects.create_user(username="rename-owner")
+    other_user = get_user_model().objects.create_user(username="rename-intruder")
+    ChatSession.objects.create(
+        session_id="chat_rename_private",
+        user=owner,
+        title="Private title",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=other_user.id,
+        username=other_user.username,
+        is_staff=False,
+    )
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/v1/chat/sessions/chat_rename_private/title",
+            json={"title": "Not allowed"},
+        )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert ChatSession.objects.get(session_id="chat_rename_private").title == "Private title"
+    connections.close_all()
