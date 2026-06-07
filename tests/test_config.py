@@ -20,6 +20,8 @@ def test_settings_load_from_environment() -> None:
     assert settings.intent_embedding_confidence_threshold == 0.78
     assert settings.intent_llm_fallback_enabled in {True, False}
     assert settings.allowed_hosts == ["localhost", "127.0.0.1"]
+    assert "http://localhost:5173" in settings.cors_origins
+    assert "http://127.0.0.1:5173" in settings.cors_origins
     assert settings.api_rate_limit_requests == 120
     assert settings.api_rate_limit_window_seconds == 60
     assert settings.sql_execution_timeout_seconds == 10

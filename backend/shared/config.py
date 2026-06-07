@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     app_debug: bool = Field(default=False, alias="APP_DEBUG")
     app_secret_key: str = Field(alias="APP_SECRET_KEY")
     app_allowed_hosts: str = Field(default="localhost,127.0.0.1", alias="APP_ALLOWED_HOSTS")
+    app_cors_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173",
+        alias="APP_CORS_ORIGINS",
+    )
     api_version: str = Field(default="v1", alias="API_VERSION")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -111,6 +115,10 @@ class Settings(BaseSettings):
     @property
     def allowed_hosts(self) -> list[str]:
         return [host.strip() for host in self.app_allowed_hosts.split(",") if host.strip()]
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.app_cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache

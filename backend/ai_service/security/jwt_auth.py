@@ -17,6 +17,7 @@ class AuthenticatedUser:
     user_id: int
     username: str
     is_staff: bool
+    is_superuser: bool = False
 
 
 def require_authenticated_user(
@@ -109,6 +110,7 @@ def _load_active_user(user_id: int) -> AuthenticatedUser:
             user_id=user.id,
             username=user.username,
             is_staff=user.is_staff,
+            is_superuser=user.is_superuser,
         )
     finally:
         close_old_connections()

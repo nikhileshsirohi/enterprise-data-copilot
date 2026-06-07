@@ -25,7 +25,11 @@ def list_chat_sessions(
     reader: Annotated[ChatSessionReader, Depends(get_chat_session_reader)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ChatSessionListResponse:
-    sessions = reader.list_sessions(user_id=current_user.user_id, limit=limit)
+    sessions = reader.list_sessions(
+        user_id=current_user.user_id,
+        can_view_all=current_user.is_superuser,
+        limit=limit,
+    )
     return ChatSessionListResponse(sessions=sessions)
 
 
@@ -40,6 +44,7 @@ def get_chat_session(
         return reader.get_session(
             user_id=current_user.user_id,
             session_id=session_id,
+            can_view_all=current_user.is_superuser,
             message_limit=message_limit,
         )
     except ChatSessionNotFoundError as exc:

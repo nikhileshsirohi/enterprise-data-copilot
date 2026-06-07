@@ -15,7 +15,13 @@ class ChatSessionNotFoundError(ValueError):
 
 
 class ChatSessionReader:
-    def list_sessions(self, *, user_id: int, limit: int = 50) -> list[ChatSessionSummary]:
+    def list_sessions(
+        self,
+        *,
+        user_id: int,
+        can_view_all: bool = False,
+        limit: int = 50,
+    ) -> list[ChatSessionSummary]:
         ensure_django_setup()
 
         from django.db import close_old_connections
@@ -24,14 +30,21 @@ class ChatSessionReader:
 
         close_old_connections()
         try:
+            filters = {"is_active": True}
+            if not can_view_all:
+                filters["user_id"] = user_id
+
             sessions = (
-                ChatSession.objects.filter(user_id=user_id, is_active=True)
+                ChatSession.objects.filter(**filters)
+                .select_related("user")
                 .annotate(message_count=Count("messages"))
                 .order_by("-updated_at", "-id")[:limit]
             )
             return [
                 ChatSessionSummary(
                     session_id=session.session_id,
+                    user_id=session.user_id,
+                    username=session.user.username,
                     title=session.title,
                     is_active=session.is_active,
                     message_count=session.message_count,
@@ -48,6 +61,7 @@ class ChatSessionReader:
         *,
         user_id: int,
         session_id: str,
+        can_view_all: bool = False,
         message_limit: int = 100,
     ) -> ChatSessionDetailResponse:
         ensure_django_setup()
@@ -58,12 +72,16 @@ class ChatSessionReader:
 
         close_old_connections()
         try:
+            filters = {
+                "session_id": session_id,
+                "is_active": True,
+            }
+            if not can_view_all:
+                filters["user_id"] = user_id
+
             session = (
-                ChatSession.objects.filter(
-                    user_id=user_id,
-                    session_id=session_id,
-                    is_active=True,
-                )
+                ChatSession.objects.filter(**filters)
+                .select_related("user")
                 .prefetch_related("messages")
                 .first()
             )
@@ -73,6 +91,8 @@ class ChatSessionReader:
             messages = session.messages.order_by("created_at", "id")[:message_limit]
             return ChatSessionDetailResponse(
                 session_id=session.session_id,
+                user_id=session.user_id,
+                username=session.user.username,
                 title=session.title,
                 is_active=session.is_active,
                 created_at=session.created_at,

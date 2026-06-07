@@ -43,6 +43,8 @@ def test_chat_sessions_endpoint_lists_current_user_sessions() -> None:
     body = response.json()
     assert len(body["sessions"]) == 1
     assert body["sessions"][0]["session_id"] == "chat_user_owned"
+    assert body["sessions"][0]["user_id"] == user.id
+    assert body["sessions"][0]["username"] == user.username
     assert body["sessions"][0]["title"] == "Available stock"
     assert body["sessions"][0]["message_count"] == 2
     connections.close_all()
@@ -82,6 +84,8 @@ def test_chat_session_detail_endpoint_returns_messages() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["session_id"] == "chat_detail"
+    assert body["user_id"] == user.id
+    assert body["username"] == user.username
     assert body["title"] == "Committed quantity"
     assert [message["id"] for message in body["messages"]] == [
         user_message.id,
@@ -115,6 +119,125 @@ def test_chat_session_detail_endpoint_blocks_other_users() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Chat session was not found."
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_django_staff_without_superuser_flag_cannot_review_other_sessions() -> None:
+    owner = get_user_model().objects.create_user(username="staff-scope-owner")
+    staff_user = get_user_model().objects.create_user(
+        username="staff-not-superuser",
+        is_staff=True,
+    )
+    ChatSession.objects.create(
+        session_id="staff_should_not_see",
+        user=owner,
+        title="Owner session",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=staff_user.id,
+        username=staff_user.username,
+        is_staff=True,
+        is_superuser=False,
+    )
+    with TestClient(app) as client:
+        list_response = client.get("/api/v1/chat/sessions")
+        detail_response = client.get("/api/v1/chat/sessions/staff_should_not_see")
+
+    app.dependency_overrides.clear()
+
+    assert list_response.status_code == 200
+    assert list_response.json()["sessions"] == []
+    assert detail_response.status_code == 404
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_superuser_chat_sessions_endpoint_lists_all_active_sessions() -> None:
+    super_user = get_user_model().objects.create_superuser(
+        username="session-reviewer",
+        password="StrongPass123!",
+    )
+    owner = get_user_model().objects.create_user(username="session-owner")
+    other_owner = get_user_model().objects.create_user(username="session-other-owner")
+    owner_session = ChatSession.objects.create(
+        session_id="owner_visible_to_staff",
+        user=owner,
+        title="Owner session",
+    )
+    ChatMessage.objects.create(session=owner_session, role=ChatMessage.Role.USER, content="Question")
+    ChatSession.objects.create(
+        session_id="other_visible_to_staff",
+        user=other_owner,
+        title="Other session",
+    )
+    ChatSession.objects.create(
+        session_id="inactive_hidden_from_staff",
+        user=owner,
+        title="Inactive session",
+        is_active=False,
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=super_user.id,
+        username=super_user.username,
+        is_staff=True,
+        is_superuser=True,
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/sessions")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    sessions = response.json()["sessions"]
+    assert {session["session_id"] for session in sessions} == {
+        "owner_visible_to_staff",
+        "other_visible_to_staff",
+    }
+    assert {session["username"] for session in sessions} == {
+        owner.username,
+        other_owner.username,
+    }
+    connections.close_all()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_superuser_chat_session_detail_endpoint_can_review_other_user_session() -> None:
+    super_user = get_user_model().objects.create_superuser(
+        username="detail-reviewer",
+        password="StrongPass123!",
+    )
+    owner = get_user_model().objects.create_user(username="detail-owner")
+    session = ChatSession.objects.create(
+        session_id="detail_visible_to_staff",
+        user=owner,
+        title="Reviewable session",
+    )
+    ChatMessage.objects.create(
+        session=session,
+        role=ChatMessage.Role.ASSISTANT,
+        content="Reviewed answer",
+    )
+
+    app.dependency_overrides[require_authenticated_user] = lambda: AuthenticatedUser(
+        user_id=super_user.id,
+        username=super_user.username,
+        is_staff=True,
+        is_superuser=True,
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/v1/chat/sessions/detail_visible_to_staff")
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == "detail_visible_to_staff"
+    assert body["user_id"] == owner.id
+    assert body["username"] == owner.username
+    assert body["messages"][0]["content"] == "Reviewed answer"
     connections.close_all()
 
 

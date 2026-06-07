@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 class ChatSessionSummary(BaseModel):
     session_id: str
+    user_id: int
+    username: str
     title: str
     is_active: bool
     message_count: int
@@ -26,6 +28,8 @@ class ChatMessageDetail(BaseModel):
 
 class ChatSessionDetailResponse(BaseModel):
     session_id: str
+    user_id: int
+    username: str
     title: str
     is_active: bool
     created_at: datetime

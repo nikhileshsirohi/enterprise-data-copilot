@@ -27,6 +27,21 @@ def test_health_endpoint_stays_public() -> None:
     assert response.status_code == 200, response.json()
 
 
+def test_ai_service_allows_frontend_cors_origin() -> None:
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/health/",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
 @pytest.mark.django_db(transaction=True)
 def test_protected_endpoint_accepts_valid_django_access_token() -> None:
     user = get_user_model().objects.create_user(username="fastapi-user", is_staff=True)
