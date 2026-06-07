@@ -42,13 +42,10 @@ def ask_question(
             limit=settings.chat_history_context_limit,
         )
         intent = IntentRouter().decide(request.question)
-        allow_semantic_cache = (
-            intent.intent == "database"
-            and request.use_cache
-            and not chat_context
-        )
+        allow_semantic_cache_lookup = intent.intent == "database" and request.use_cache
+        allow_semantic_cache_store = allow_semantic_cache_lookup and not chat_context
         semantic_cache = SemanticCache()
-        cached = semantic_cache.get(request.question) if allow_semantic_cache else None
+        cached = semantic_cache.get(request.question) if allow_semantic_cache_lookup else None
         if cached:
             response = cached.response
         elif intent.intent == "policy":
@@ -62,7 +59,7 @@ def ask_question(
                 user_id=effective_user_id,
             )
             cache_key = (
-                semantic_cache.set(request.question, response) if allow_semantic_cache else None
+                semantic_cache.set(request.question, response) if allow_semantic_cache_store else None
             )
             if cache_key:
                 response = response.model_copy(update={"cache_key": cache_key})
