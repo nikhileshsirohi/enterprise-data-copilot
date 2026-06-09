@@ -119,13 +119,37 @@ It is used for retrieval:
 
 3. **Hybrid retrieval**
 
-   Policy search combines:
+   Policy search uses Elasticsearch hybrid retrieval. It does not depend on only one search method.
 
-   - Dense vector search using embeddings
-   - Keyword/BM25 search
-   - Reciprocal rank fusion to merge both result sets
+   ```text
+   User policy question
+     -> Generate question embedding with nomic-embed-text
+     -> Elasticsearch vector search over policy chunk embeddings
+     -> Elasticsearch keyword/BM25 search over policy title and text
+     -> Reciprocal rank fusion merges both result lists
+     -> Top ranked chunks are sent to the LLM
+     -> LLM returns an answer with citations
+   ```
 
-This improves recall because some questions match semantically, while others match exact terms like `VPN`, `meal`, `receipt`, or `reimbursement`.
+   The hybrid search has three parts:
+
+   - **Vector search**
+
+     The user question is converted into an embedding using `nomic-embed-text`. Elasticsearch compares that vector with stored policy chunk vectors. This finds semantically similar chunks even when the user does not use the exact same words as the policy document.
+
+     Example: `meal allowance` can still match a chunk containing `Meal reimbursement is capped at 60 USD per day`.
+
+   - **Keyword/BM25 search**
+
+     Elasticsearch also runs a keyword search over `document_title` and `text`. This is useful for exact terms, acronyms, policy names, and compliance words.
+
+     Example: `VPN`, `MFA`, `receipt`, `reimbursement`, and `restricted data`.
+
+   - **Reciprocal rank fusion**
+
+     Vector search and keyword search return separate ranked lists. Reciprocal rank fusion combines those lists into one final ranking. A chunk that appears high in both lists becomes stronger. A chunk that appears high in only one list can still be selected if it is highly relevant.
+
+   This gives better retrieval quality than vector-only or keyword-only search.
 
 ## Hybrid Intent Detection
 
